@@ -4,18 +4,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "swift-git",
+    name: "swift-wit",
     platforms: [
-        .iOS(.v16),
         .macOS(.v13),
+        .iOS(.v16),
         .watchOS(.v9),
         .tvOS(.v16),
     ],
     products: [
-        .library(name: "Git", targets: ["Git"]),
+        .library(name: "Wit", targets: ["Wit"]),
     ],
     targets: [
-        .target(name: "Git"),
-        .testTarget(name: "GitTests", dependencies: ["Git"]),
+        .target(name: "Wit"),
+        .testTarget(name: "WitTests", dependencies: ["Wit"]),
     ]
 )

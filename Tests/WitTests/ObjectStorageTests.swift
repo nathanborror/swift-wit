@@ -1,65 +1,28 @@
 import Foundation
 import Testing
-@testable import Git
+@testable import Wit
 
-@Suite("Git Tests")
-struct GitTests {
-    let url = URL.documentsDirectory.appending(path: "puttests")
+@Suite("Object Storage Tests")
+struct ObjectStorageTests {
+    let url = URL.documentsDirectory.appending(path: "wit-test/.wit")
 
-    @Test("Basic commit")
-    func basicCommit() async throws {
-        let storage = try ObjectStorage(url: url)
+    @Test("Simple blob storage")
+    func simpleBlobStorage() async throws {
+        let storage = try ObjectStorage(baseURL: url)
 
         let blobContent = "Hello, World!"
         let blob = Blob(string: blobContent)
         let blobHash = try storage.store(blob)
         #expect(blobHash != "")
 
-        let tree = Tree(entries: [
-            .init(
-                mode: "100644",
-                name: "README.md",
-                hash: blobHash
-            ),
-        ])
-        let treeHash = try storage.store(tree)
-        #expect(treeHash != "")
-
-        let commitTimestamp = Date.now
-        let commit = Commit(
-            tree: treeHash,
-            parent: "",
-            author: "Nathan Borror <nathan@nathan.run>",
-            message: "Initial commit",
-            timestamp: commitTimestamp
-        )
-        let commitHash = try storage.store(commit)
-        #expect(commitHash != "")
-
-        // Blob retrieval
-
         let blobObj = try storage.retrieve(blobHash)
         #expect(blobObj.kind == .blob)
         #expect(String(data: blobObj.content, encoding: .utf8) == blobContent)
-
-        // Tree retrieval
-
-        let treeObj = try storage.retrieve(treeHash)
-        #expect(treeObj.kind == .tree)
-        #expect(treeObj.content == tree.content)
-
-        // Commit retrieval
-
-        let commitObj = try storage.retrieve(commitHash)
-        #expect(commitObj.kind == .commit)
-        #expect(commitObj.content == commit.content)
-
-        //#expect(URL.documentsDirectory.absoluteString == "")
     }
 
-    @Test("Large file compression")
-    func largeFileCompression() async throws {
-        let storage = try ObjectStorage(url: url)
+    @Test("Large blob compression")
+    func largeBlobCompression() async throws {
+        let storage = try ObjectStorage(baseURL: url)
 
         let content = """
         When in the Course of human events, it becomes necessary for one people to dissolve the political bands which have \
@@ -92,6 +55,53 @@ struct GitTests {
         let blobContent = String(data: blobObj.content, encoding: .utf8)
         #expect(blobObj.kind == .blob)
         #expect(blobContent == content)
+    }
+
+    @Test("Tree storage")
+    func treeStorage() async throws {
+        let storage = try ObjectStorage(baseURL: url)
+
+        let blob = Blob(string: "Hello, World!")
+        let blobHash = try storage.store(blob)
+
+        let tree = Tree(entries: [
+            .init(
+                mode: "100644",
+                name: "README.md",
+                hash: blobHash
+            ),
+        ])
+        let treeHash = try storage.store(tree)
+        #expect(treeHash != "")
+
+        let treeObj = try storage.retrieve(treeHash)
+        #expect(treeObj.kind == .tree)
+        #expect(treeObj.content == tree.content)
+    }
+
+    @Test("Commit storage")
+    func commitStorage() async throws {
+        let storage = try ObjectStorage(baseURL: url)
+
+        let blob = Blob(string: "Hello, World!")
+        let blobHash = try storage.store(blob)
+        let tree = Tree(entries: [.init(mode: "100644", name: "README.md", hash: blobHash)])
+        let treeHash = try storage.store(tree)
+
+        let commitTimestamp = Date.now
+        let commit = Commit(
+            tree: treeHash,
+            parent: "",
+            author: "Nathan Borror <nathan@nathan.run>",
+            message: "Initial commit",
+            timestamp: commitTimestamp
+        )
+        let commitHash = try storage.store(commit)
+        #expect(commitHash != "")
+
+        let commitObj = try storage.retrieve(commitHash)
+        #expect(commitObj.kind == .commit)
+        #expect(commitObj.content == commit.content)
     }
 
     private func commitDate(_ date: Date) -> String {
