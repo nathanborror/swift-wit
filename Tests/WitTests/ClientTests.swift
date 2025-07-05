@@ -7,11 +7,11 @@ struct ClientTests {
 
     @Test("Status")
     func status() async throws {
-        let workingURL = URL.documentsDirectory.appending(path: "test-client-status")
-        defer { try? FileManager.default.removeItem(at: workingURL) }
+        let baseURL = URL.documentsDirectory.appending(path: "test-client-status")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(workingURL: workingURL)
-        let dir = workingURL.appending(path: "Documents")
+        let client = try Client(baseURL: baseURL)
+        let dir = baseURL.appending(path: "Documents")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         try "This is some foo".write(to: dir.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
@@ -25,7 +25,7 @@ struct ClientTests {
         #expect(initialStatus.hasChanges == false)
 
         try "Updated foo".write(to: dir.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
-        try "This is some baz".write(to: workingURL.appending(path: "baz.txt"), atomically: true, encoding: .utf8)
+        try "This is some baz".write(to: baseURL.appending(path: "baz.txt"), atomically: true, encoding: .utf8)
         try FileManager.default.removeItem(at: dir.appending(path: "bar.txt"))
 
         let status = try client.status(commitHash: initialCommitHash)
@@ -43,11 +43,11 @@ struct ClientTests {
 
     @Test("List tracked files")
     func listTrackedFiles() async throws {
-        let workingURL = URL.documentsDirectory.appending(path: "test-client-list")
-        defer { try? FileManager.default.removeItem(at: workingURL) }
+        let baseURL = URL.documentsDirectory.appending(path: "test-client-list")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(workingURL: workingURL)
-        let fooDir = workingURL.appending(path: "foo")
+        let client = try Client(baseURL: baseURL)
+        let fooDir = baseURL.appending(path: "foo")
         try FileManager.default.createDirectory(at: fooDir, withIntermediateDirectories: true)
         try "This is some foo".write(to: fooDir.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
         try "This is some bar".write(to: fooDir.appending(path: "bar.txt"), atomically: true, encoding: .utf8)
@@ -64,13 +64,13 @@ struct ClientTests {
 
     @Test("Commit")
     func commit() async throws {
-        let workingURL = URL.documentsDirectory.appending(path: "test-client-commit")
-        defer { try? FileManager.default.removeItem(at: workingURL) }
+        let baseURL = URL.documentsDirectory.appending(path: "test-client-commit")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(workingURL: workingURL)
+        let client = try Client(baseURL: baseURL)
 
         let doc = "This is my document"
-        let docURL = workingURL.appending(path: "README.md")
+        let docURL = baseURL.appending(path: "README.md")
         try doc.write(to: docURL, atomically: true, encoding: .utf8)
 
         let commitHash = try client.commit(
@@ -95,14 +95,14 @@ struct ClientTests {
 
     @Test("Tree optimization - unchanged subtrees are reused")
     func treeOptimizationTest() async throws {
-        let workingURL = URL.documentsDirectory.appending(path: "test-client-tree-optimization")
-        defer { try? FileManager.default.removeItem(at: workingURL) }
+        let baseURL = URL.documentsDirectory.appending(path: "test-client-tree-optimization")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(workingURL: workingURL)
+        let client = try Client(baseURL: baseURL)
 
         // Create initial directory structure
-        let fooDir = workingURL.appending(path: "foo")
-        let barDir = workingURL.appending(path: "bar")
+        let fooDir = baseURL.appending(path: "foo")
+        let barDir = baseURL.appending(path: "bar")
         try FileManager.default.createDirectory(at: fooDir, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: barDir, withIntermediateDirectories: true)
 

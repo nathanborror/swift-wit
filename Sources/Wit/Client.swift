@@ -4,13 +4,21 @@ public let WIT_DIR_NAME = ".wit"
 public let WIT_IGNORE: Set<String> = [WIT_DIR_NAME, ".DS_Store"]
 
 public final class Client {
-    let url: URL
+    let baseURL: URL
+    let witBaseURL: URL
+    let witHeadURL: URL
+    let witManifestURL: URL
+
     let storage: ObjectStore
     let ignored: Set<String>
 
-    public init(workingURL: URL, ignorePaths: Set<String> = []) throws {
-        self.url = workingURL
-        self.storage = try ObjectStore(baseURL: workingURL.appending(path: WIT_DIR_NAME))
+    public init(baseURL: URL, ignorePaths: Set<String> = []) throws {
+        self.baseURL = baseURL
+        self.witBaseURL = baseURL.appending(path: WIT_DIR_NAME)
+        self.witHeadURL = witBaseURL.appending(path: "HEAD")
+        self.witManifestURL = witBaseURL.appending(path: "manifest")
+
+        self.storage = try ObjectStore(baseURL: witBaseURL)
         self.ignored = ignorePaths.union(WIT_IGNORE)
     }
 
@@ -21,33 +29,33 @@ public final class Client {
     public func status(commitHash: String? = nil) throws -> Status {
         let commitHash = commitHash ?? HEAD ?? ""
         let commit = try storage.retrieve(commitHash, as: Commit.self)
-        let changedFiles = detectFileChanges(treeHash: commit.tree)
+        let changed = filesChanged(treeHash: commit.tree)
         return .init(
-            modified: changedFiles.filter { $0.kind == .modified }.map { $0.path },
-            added: changedFiles.filter { $0.kind == .added }.map { $0.path },
-            deleted: changedFiles.filter { $0.kind == .deleted }.map { $0.path }
+            modified: changed.filter { $0.kind == .modified }.map { $0.path },
+            added: changed.filter { $0.kind == .added }.map { $0.path },
+            deleted: changed.filter { $0.kind == .deleted }.map { $0.path }
         )
     }
 
     public func commit(message: String, author: String, timestamp: Date = .now, previousCommitHash: String = "") throws -> String {
         let previousCommit = try? storage.retrieve(previousCommitHash, as: Commit.self)
-        let changedFiles = detectFileChanges(treeHash: previousCommit?.tree)
+        let changed = filesChanged(treeHash: previousCommit?.tree)
 
         var blobHashes: [String: String] = [:]
-        var changedPaths: Set<String> = []
+        var changedFilePaths: Set<String> = []
 
-        for change in changedFiles {
-            let fileURL = url.appending(path: change.path)
+        for file in changed {
+            let fileURL = baseURL.appending(path: file.path)
             let fileData = try Data(contentsOf: fileURL)
             let blob = Blob(content: fileData)
             let hash = try storage.store(blob)
-            blobHashes[change.path] = hash
-            changedPaths.insert(change.path)
+            blobHashes[file.path] = hash
+            changedFilePaths.insert(file.path)
         }
 
         // Build new tree structure
         let treeHash = try updateTreesForChangedPaths(
-            changedPaths: changedPaths,
+            changedPaths: changedFilePaths,
             blobHashes: blobHashes,
             previousTreeHash: previousCommit?.tree ?? ""
         )
@@ -74,24 +82,22 @@ public final class Client {
         }
         let commit = try storage.retrieve(commitHash, as: Commit.self)
         var files: [String: FileRef] = [:]
-        try collectFilesFromTree(treeHash: commit.tree, path: "", into: &files)
+        try filesFromTree(treeHash: commit.tree, path: "", into: &files)
         return files.values.sorted { $0.path < $1.path }
     }
 
     // MARK: Private
 
     private func readHEAD() throws -> String? {
-        let headURL = url.appending(path: WIT_DIR_NAME).appending(path: "HEAD")
-        guard FileManager.default.fileExists(atPath: headURL.path) else {
+        guard FileManager.default.fileExists(atPath: witHeadURL.path) else {
             return nil
         }
-        let out = try String(contentsOf: headURL, encoding: .utf8)
+        let out = try String(contentsOf: witHeadURL, encoding: .utf8)
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func writeHEAD(commitHash: String) throws {
-        let headURL = url.appending(path: WIT_DIR_NAME).appending(path: "HEAD")
-        try commitHash.write(to: headURL, atomically: true, encoding: .utf8)
+        try commitHash.write(to: witHeadURL, atomically: true, encoding: .utf8)
     }
 
     private func writeManifest(commitHash: String) throws {
@@ -99,20 +105,19 @@ public final class Client {
         let content = files.map {
             "\($0.mode) \($0.hash ?? "") \($0.path)"
         }.joined(separator: "\n")
-        let manifestURL = url.appending(component: WIT_DIR_NAME).appending(path: "manifest")
-        try content.write(to: manifestURL, atomically: true, encoding: .utf8)
+        try content.write(to: witManifestURL, atomically: true, encoding: .utf8)
     }
 
-    private func detectFileChanges(treeHash: String?) -> [FileRef] {
+    private func filesChanged(treeHash: String?) -> [FileRef] {
         var changes: [FileRef] = []
 
         // Build a map of previous file states
         var previousFiles: [String: FileRef] = [:]
-        try? collectFilesFromTree(treeHash: treeHash, into: &previousFiles)
+        try? filesFromTree(treeHash: treeHash, into: &previousFiles)
 
         // Scan current working directory
         var currentFiles: [String: FileRef] = [:]
-        try? collectFilesFromDirectory(into: &currentFiles)
+        try? filesFromURL(url: baseURL, into: &currentFiles)
 
         // Find additions and modifications
         for (path, fileRef) in currentFiles {
@@ -132,20 +137,20 @@ public final class Client {
         return changes
     }
 
-    private func collectFilesFromTree(treeHash: String?, path: String = "", into files: inout [String: FileRef]) throws {
+    private func filesFromTree(treeHash: String?, path: String = "", into files: inout [String: FileRef]) throws {
         guard let treeHash else { return }
         let tree = try storage.retrieve(treeHash, as: Tree.self)
         for entry in tree.entries {
             let fullPath = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
             if entry.mode == "040000" { // Directory, recurse
-                try collectFilesFromTree(treeHash: entry.hash, path: fullPath, into: &files)
+                try filesFromTree(treeHash: entry.hash, path: fullPath, into: &files)
             } else {
                 files[fullPath] = .init(path: fullPath, hash: entry.hash, mode: entry.mode)
             }
         }
     }
 
-    private func collectFilesFromDirectory(into files: inout [String: FileRef]) throws {
+    private func filesFromURL(url: URL, into files: inout [String: FileRef]) throws {
         if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
             for case let fileURL as URL in enumerator {
                 let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
@@ -200,7 +205,7 @@ public final class Client {
         }
 
         var entries: [Tree.Entry] = []
-        let directoryURL = directory.isEmpty ? url : url.appending(path: directory)
+        let directoryURL = directory.isEmpty ? baseURL : baseURL.appending(path: directory)
 
         let contents = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.isDirectoryKey])
 
