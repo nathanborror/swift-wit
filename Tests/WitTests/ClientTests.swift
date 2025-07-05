@@ -79,7 +79,7 @@ struct ClientTests {
         )
         #expect(commitHash.isEmpty == false)
         #expect(try client.storage.exists(hash: commitHash))
-        #expect(client.HEAD == commitHash)
+        #expect(client.head == commitHash)
 
         let commit = try client.storage.retrieve(commitHash, as: Commit.self)
         #expect(commit.message == "Initial commit")

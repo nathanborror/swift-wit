@@ -22,12 +22,20 @@ public final class Client {
         self.ignored = ignorePaths.union(WIT_IGNORE)
     }
 
-    /// The hash of the current commit (HEAD), if any.
+    /// The current HEAD commit hash.
     ///
-    /// This computed property tries to read the contents of the `HEAD` file from the `.wit` directory and returns it as a trimmed string. If the repository has
-    /// no commits yet or the `HEAD` file doesn't exist, this property is `nil`.
-    public var HEAD: String? {
-        try? readHEAD()
+    /// This property gets or sets the `HEAD` reference used by the repository. When accessed, it reads the commit hash stored in the `.wit/HEAD` file,
+    /// trimming any whitespace or newlines. Setting this property updates the file to the new commit hash value.
+    /// If no `HEAD` is present, the getter returns `nil`.
+    public var head: String? {
+        get {
+            guard FileManager.default.fileExists(atPath: witHeadURL.path) else { return nil }
+            let out = try? String(contentsOf: witHeadURL, encoding: .utf8)
+            return out?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        set {
+            try? newValue?.write(to: witHeadURL, atomically: true, encoding: .utf8)
+        }
     }
 
     /// Returns the working directory status compared to a specific commit or HEAD.
@@ -39,7 +47,7 @@ public final class Client {
     /// - Returns: A `Status` object with arrays of modified, added, and deleted file paths.
     /// - Throws: An error if the commit cannot be retrieved.
     public func status(commitHash: String? = nil) throws -> Status {
-        let commitHash = commitHash ?? HEAD ?? ""
+        let commitHash = commitHash ?? head ?? ""
         let commit = try storage.retrieve(commitHash, as: Commit.self)
         let changed = filesChanged(treeHash: commit.tree)
         return .init(
@@ -92,11 +100,9 @@ public final class Client {
             message: message,
             timestamp: timestamp
         )
-        let commitHash = try storage.store(commit)
-
-        try writeHEAD(commitHash: commitHash)
-        try writeManifest(commitHash: commitHash)
-        return commitHash
+        head = try storage.store(commit)
+        try writeManifest(commitHash: head!)
+        return head!
     }
 
     /// Lists all files tracked in a given commit, or the current HEAD.
@@ -108,7 +114,7 @@ public final class Client {
     /// - Returns: An array of `FileRef` values for each tracked file, sorted by path.
     /// - Throws: An error if the commit or tree cannot be retrieved.
     public func tracked(commitHash: String? = nil) throws -> [FileRef] {
-        let commitHash = commitHash ?? HEAD ?? ""
+        let commitHash = commitHash ?? head ?? ""
         if commitHash.isEmpty {
             return []
         }
@@ -119,18 +125,6 @@ public final class Client {
     }
 
     // MARK: Private
-
-    private func readHEAD() throws -> String? {
-        guard FileManager.default.fileExists(atPath: witHeadURL.path) else {
-            return nil
-        }
-        let out = try String(contentsOf: witHeadURL, encoding: .utf8)
-        return out.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func writeHEAD(commitHash: String) throws {
-        try commitHash.write(to: witHeadURL, atomically: true, encoding: .utf8)
-    }
 
     private func writeManifest(commitHash: String) throws {
         let files = try tracked(commitHash: commitHash)
