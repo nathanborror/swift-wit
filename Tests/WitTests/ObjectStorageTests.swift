@@ -4,25 +4,35 @@ import Testing
 
 @Suite("Object Storage Tests")
 struct ObjectStorageTests {
-    let url = URL.documentsDirectory.appending(path: "wit-test/.wit")
 
-    @Test("Simple blob storage")
+    @Test("Blob storage")
     func simpleBlobStorage() async throws {
-        let storage = try ObjectStorage(baseURL: url)
+        let baseURL = URL.documentsDirectory.appending(path: "test-blob-storage")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+        
+        let storage = try ObjectStore(baseURL: baseURL)
 
-        let blobContent = "Hello, World!"
-        let blob = Blob(string: blobContent)
+        let content = "Hello, World!"
+
+        let blob = Blob(string: content)
         let blobHash = try storage.store(blob)
         #expect(blobHash != "")
 
         let blobObj = try storage.retrieve(blobHash)
         #expect(blobObj.kind == .blob)
-        #expect(String(data: blobObj.content, encoding: .utf8) == blobContent)
+        #expect(String(data: blobObj.content, encoding: .utf8) == content)
+
+        let identicalBlob = Blob(string: content)
+        let identicalBlobHash = try storage.store(identicalBlob)
+        #expect(identicalBlobHash == blobHash)
     }
 
-    @Test("Large blob compression")
+    @Test("Blob compression")
     func largeBlobCompression() async throws {
-        let storage = try ObjectStorage(baseURL: url)
+        let baseURL = URL.documentsDirectory.appending(path: "test-blob-compression")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let storage = try ObjectStore(baseURL: baseURL)
 
         let content = """
         When in the Course of human events, it becomes necessary for one people to dissolve the political bands which have \
@@ -55,11 +65,18 @@ struct ObjectStorageTests {
         let blobContent = String(data: blobObj.content, encoding: .utf8)
         #expect(blobObj.kind == .blob)
         #expect(blobContent == content)
+
+        let identicalBlob = Blob(string: content)
+        let identicalBlobHash = try storage.store(identicalBlob)
+        #expect(identicalBlobHash == blobHash)
     }
 
     @Test("Tree storage")
     func treeStorage() async throws {
-        let storage = try ObjectStorage(baseURL: url)
+        let baseURL = URL.documentsDirectory.appending(path: "test-tree-storage")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let storage = try ObjectStore(baseURL: baseURL)
 
         let blob = Blob(string: "Hello, World!")
         let blobHash = try storage.store(blob)
@@ -81,7 +98,10 @@ struct ObjectStorageTests {
 
     @Test("Commit storage")
     func commitStorage() async throws {
-        let storage = try ObjectStorage(baseURL: url)
+        let baseURL = URL.documentsDirectory.appending(path: "test-commit-storage")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let storage = try ObjectStore(baseURL: baseURL)
 
         let blob = Blob(string: "Hello, World!")
         let blobHash = try storage.store(blob)
@@ -104,9 +124,25 @@ struct ObjectStorageTests {
         #expect(commitObj.content == commit.content)
     }
 
+    @Test("Hashing")
+    func hashing() async throws {
+        let baseURL = URL.documentsDirectory.appending(path: "test-hashing")
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let storage = try ObjectStore(baseURL: baseURL)
+        let content = "Hello, World!"
+        let blob = Blob(string: content)
+        let url = baseURL.appending(path: "test.txt")
+        try content.write(to: url, atomically: true, encoding: .utf8)
+
+        let blobHash = storage.computeHash(blob)
+        let memoryMappedHash = try storage.computeHashMemoryMapped(url)
+        #expect(blobHash == memoryMappedHash)
+    }
+
     private func commitDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = commitDateFormat
+        formatter.dateFormat = Commit.dateFormat
         return formatter.string(from: date)
     }
 }
