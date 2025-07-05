@@ -1,10 +1,10 @@
 import Foundation
 
 public struct FileRef {
-    public let path: String
-    public let hash: String?
+    public var path: String
+    public var hash: String?
     public var kind: Kind?
-    public let mode: String
+    public var mode: Mode
 
     public enum Kind {
         case added
@@ -12,7 +12,7 @@ public struct FileRef {
         case deleted
     }
 
-    public init(path: String, hash: String? = nil, kind: Kind? = nil, mode: String) {
+    public init(path: String, hash: String? = nil, kind: Kind? = nil, mode: Mode) {
         self.path = path
         self.hash = hash
         self.kind = kind
@@ -22,6 +22,12 @@ public struct FileRef {
     public func apply(kind: Kind) -> FileRef {
         var ref = self
         ref.kind = kind
+        return ref
+    }
+
+    public func apply(hash: String) -> FileRef {
+        var ref = self
+        ref.hash = hash
         return ref
     }
 }

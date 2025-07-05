@@ -83,7 +83,7 @@ struct ObjectStorageTests {
 
         let tree = Tree(entries: [
             .init(
-                mode: "100644",
+                mode: .normal,
                 name: "README.md",
                 hash: blobHash
             ),
@@ -105,7 +105,7 @@ struct ObjectStorageTests {
 
         let blob = Blob(string: "Hello, World!")
         let blobHash = try storage.store(blob)
-        let tree = Tree(entries: [.init(mode: "100644", name: "README.md", hash: blobHash)])
+        let tree = Tree(entries: [.init(mode: .normal, name: "README.md", hash: blobHash)])
         let treeHash = try storage.store(tree)
 
         let commitTimestamp = Date.now

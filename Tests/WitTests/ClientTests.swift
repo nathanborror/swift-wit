@@ -68,29 +68,46 @@ struct ClientTests {
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
         let client = try Client(baseURL: baseURL)
+        let dir = baseURL.appending(path: "documents")
+        let subDir = dir.appending(path: "subdir")
 
-        let doc = "This is my document"
-        let docURL = baseURL.appending(path: "README.md")
-        try doc.write(to: docURL, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
 
-        let commitHash = try client.commit(
+        try "This is some foo".write(to: dir.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
+        try "This is some bar".write(to: subDir.appending(path: "bar.txt"), atomically: true, encoding: .utf8)
+
+        let initialCommitHash = try client.commit(
             message: "Initial commit",
             author: "Test User <test@example.com>"
         )
-        #expect(commitHash.isEmpty == false)
-        #expect(try client.storage.exists(hash: commitHash))
-        #expect(client.head == commitHash)
+        #expect(initialCommitHash.isEmpty == false)
+        #expect(try client.storage.exists(hash: initialCommitHash))
+        #expect(client.head == initialCommitHash)
 
-        let commit = try client.storage.retrieve(commitHash, as: Commit.self)
-        #expect(commit.message == "Initial commit")
-        #expect(commit.parent.isEmpty)
+        let initialCommit = try client.storage.retrieve(initialCommitHash, as: Commit.self)
+        #expect(initialCommit.message == "Initial commit")
+        #expect(initialCommit.parent == EmptyCommitHash)
 
-        let tree = try client.storage.retrieve(commit.tree, as: Tree.self)
+        let tree = try client.storage.retrieve(initialCommit.tree, as: Tree.self)
         #expect(tree.entries.count == 1)
-        #expect(tree.entries[0].name == "README.md")
+        #expect(tree.entries[0].name == "documents")
 
-        let blob = try client.storage.retrieve(tree.entries[0].hash, as: Blob.self)
-        #expect(blob.content.count > 0)
+        let subTree = try client.storage.retrieve(tree.entries[0].hash, as: Tree.self)
+        #expect(subTree.entries.count == 2)
+
+        // Delete all files and commit changes
+
+        try FileManager.default.removeItem(at: dir)
+        let newCommitHash = try client.commit(
+            message: "Deleted documents",
+            author: "Test User <test@example.com>",
+            previousCommitHash: initialCommitHash
+        )
+        let newCommit = try client.storage.retrieve(newCommitHash, as: Commit.self)
+        let newCommitTree = try client.storage.retrieve(newCommit.tree, as: Tree.self)
+        #expect(newCommit.parent == initialCommitHash)
+        #expect(newCommitTree.entries.count == 0)
     }
 
     @Test("Ensure tree optimization - unchanged subtrees are reused")
@@ -101,15 +118,15 @@ struct ClientTests {
         let client = try Client(baseURL: baseURL)
 
         // Create initial directory structure
-        let fooDir = baseURL.appending(path: "foo")
-        let barDir = baseURL.appending(path: "bar")
-        try FileManager.default.createDirectory(at: fooDir, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: barDir, withIntermediateDirectories: true)
+        let dir = baseURL.appending(path: "dir")
+        let subDir = dir.appending(path: "subdir")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
 
         // Add files
-        try "This is some foo".write(to: fooDir.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
-        try "This is some bar".write(to: barDir.appending(path: "bar.txt"), atomically: true, encoding: .utf8)
-        try "This is some baz".write(to: barDir.appending(path: "baz.txt"), atomically: true, encoding: .utf8)
+        try "This is some foo".write(to: baseURL.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
+        try "This is some bar".write(to: dir.appending(path: "bar.txt"), atomically: true, encoding: .utf8)
+        try "This is some baz".write(to: subDir.appending(path: "baz.txt"), atomically: true, encoding: .utf8)
 
         let initialCommitHash = try client.commit(
             message: "Initial structure",
@@ -117,25 +134,25 @@ struct ClientTests {
         )
         let initialCommit = try client.storage.retrieve(initialCommitHash, as: Commit.self)
         let initialCommitTree = try client.storage.retrieve(initialCommit.tree, as: Tree.self)
-        let initialCommitTreeBarEntry = initialCommitTree.entries.first { $0.name == "bar" }!
+        let initialCommitTreeBarEntry = initialCommitTree.entries.first { $0.name == "dir" }!
         let initialCommitTreeBarEntryHash = initialCommitTreeBarEntry.hash
 
-        try "Updated foo".write(to: fooDir.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
+        try "Updated foo".write(to: baseURL.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
 
         let newCommitHash = try client.commit(
-            message: "Update main.swift only",
+            message: "Update dir/subdir/baz.txt only",
             author: "Test User <test@example.com>",
             previousCommitHash: initialCommitHash
         )
         let newCommit = try client.storage.retrieve(newCommitHash, as: Commit.self)
         let newCommitTree = try client.storage.retrieve(newCommit.tree, as: Tree.self)
-        let newCommitTreeBarEntry = newCommitTree.entries.first { $0.name == "bar" }!
+        let newCommitTreeBarEntry = newCommitTree.entries.first { $0.name == "dir" }!
         let newCommitTreeBarEntryHash = newCommitTreeBarEntry.hash
         #expect(initialCommitTreeBarEntryHash == newCommitTreeBarEntryHash, "'bar' directory tree should be reused")
         #expect(initialCommit.tree != newCommit.tree, "root tree should be different")
 
-        let initialFooEntry = initialCommitTree.entries.first { $0.name == "foo" }!
-        let newFooEntry = newCommitTree.entries.first { $0.name == "foo" }!
+        let initialFooEntry = initialCommitTree.entries.first { $0.name == "foo.txt" }!
+        let newFooEntry = newCommitTree.entries.first { $0.name == "foo.txt" }!
         #expect(initialFooEntry.hash != newFooEntry.hash, "'foo' directory tree should be different")
     }
 }

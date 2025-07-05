@@ -234,7 +234,8 @@ public final class ObjectStore {
         while currentIndex < content.endIndex {
             // Parse mode (e.g., "100644")
             guard let spaceIndex = content[currentIndex...].firstIndex(of: " ") else { break }
-            let mode = String(content[currentIndex..<spaceIndex])
+            let modeRaw = String(content[currentIndex..<spaceIndex])
+            guard let mode = Mode(rawValue: modeRaw) else { break }
 
             // Parse name
             currentIndex = content.index(after: spaceIndex)

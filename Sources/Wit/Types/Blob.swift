@@ -11,4 +11,9 @@ public struct Blob: Storable {
     public init(string: String) {
         self.content = string.data(using: .utf8) ?? Data()
     }
+
+    public init(url: URL) throws {
+        let data = try Data(contentsOf: url)
+        self.content = data
+    }
 }

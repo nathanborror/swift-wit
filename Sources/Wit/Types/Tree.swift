@@ -11,16 +11,21 @@ public struct Tree: Storable {
     }
 
     public struct Entry {
-        public let mode: String
+        public let mode: Mode
         public let name: String
         public let hash: String
 
         public var formatted: String {
-            "\(mode) \(name)\0\(hash)"
+            "\(mode.rawValue) \(name)\0\(hash)"
         }
     }
 
     public init(entries: [Entry]) {
         self.entries = entries
     }
+}
+
+public enum Mode: String {
+    case normal = "100644"
+    case directory = "040000"
 }
