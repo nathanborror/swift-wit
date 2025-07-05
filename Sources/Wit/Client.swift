@@ -22,10 +22,22 @@ public final class Client {
         self.ignored = ignorePaths.union(WIT_IGNORE)
     }
 
+    /// The hash of the current commit (HEAD), if any.
+    ///
+    /// This computed property tries to read the contents of the `HEAD` file from the `.wit` directory and returns it as a trimmed string. If the repository has
+    /// no commits yet or the `HEAD` file doesn't exist, this property is `nil`.
     public var HEAD: String? {
         try? readHEAD()
     }
 
+    /// Returns the working directory status compared to a specific commit or HEAD.
+    ///
+    /// This method determines which files have been modified, added, or deleted relative to the provided commit hash. If no commit hash is specified, it
+    /// compares to the current HEAD. The returned `Status` object lists the paths of changed files categorized by their change type.
+    ///
+    /// - Parameter commitHash: The commit hash to compare against. If `nil`, uses the current HEAD.
+    /// - Returns: A `Status` object with arrays of modified, added, and deleted file paths.
+    /// - Throws: An error if the commit cannot be retrieved.
     public func status(commitHash: String? = nil) throws -> Status {
         let commitHash = commitHash ?? HEAD ?? ""
         let commit = try storage.retrieve(commitHash, as: Commit.self)
@@ -37,6 +49,18 @@ public final class Client {
         )
     }
 
+    /// Creates a new commit representing the current state of the working directory.
+    ///
+    /// This method identifies all files that have been added, modified, or deleted since the previous commit. It then writes a new tree and commit object to the
+    /// object store. The HEAD and manifest are updated to reflect the new commit.
+    ///
+    /// - Parameters:
+    ///   - message: The commit message describing the changes.
+    ///   - author: The author of the commit.
+    ///   - timestamp: The time of the commit (defaults to current time).
+    ///   - previousCommitHash: The hash of the previous commit (if any). Defaults to an empty string.
+    /// - Returns: The hash of the newly created commit.
+    /// - Throws: An error if storing objects or writing metadata fails.
     public func commit(message: String, author: String, timestamp: Date = .now, previousCommitHash: String = "") throws -> String {
         let previousCommit = try? storage.retrieve(previousCommitHash, as: Commit.self)
         let changed = filesChanged(treeHash: previousCommit?.tree)
@@ -75,7 +99,15 @@ public final class Client {
         return commitHash
     }
 
-    public func listTrackedFiles(commitHash: String? = nil) throws -> [FileRef] {
+    /// Lists all files tracked in a given commit, or the current HEAD.
+    ///
+    /// For the specified commit hash (or HEAD if none provided), this returns a sorted array of `FileRef` objects representing all files stored in the
+    /// commit's tree.
+    ///
+    /// - Parameter commitHash: The commit hash to inspect. If `nil`, uses the current HEAD.
+    /// - Returns: An array of `FileRef` values for each tracked file, sorted by path.
+    /// - Throws: An error if the commit or tree cannot be retrieved.
+    public func tracked(commitHash: String? = nil) throws -> [FileRef] {
         let commitHash = commitHash ?? HEAD ?? ""
         if commitHash.isEmpty {
             return []
@@ -101,7 +133,7 @@ public final class Client {
     }
 
     private func writeManifest(commitHash: String) throws {
-        let files = try listTrackedFiles(commitHash: commitHash)
+        let files = try tracked(commitHash: commitHash)
         let content = files.map {
             "\($0.mode) \($0.hash ?? "") \($0.path)"
         }.joined(separator: "\n")

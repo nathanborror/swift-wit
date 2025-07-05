@@ -5,7 +5,7 @@ import Testing
 @Suite("Client Tests")
 struct ClientTests {
 
-    @Test("Status")
+    @Test("Show status of working directory")
     func status() async throws {
         let baseURL = URL.documentsDirectory.appending(path: "test-client-status")
         defer { try? FileManager.default.removeItem(at: baseURL) }
@@ -41,9 +41,9 @@ struct ClientTests {
         #expect(status.added[0] == "baz.txt")
     }
 
-    @Test("List tracked files")
-    func listTrackedFiles() async throws {
-        let baseURL = URL.documentsDirectory.appending(path: "test-client-list")
+    @Test("List tracked files in working directory")
+    func tracked() async throws {
+        let baseURL = URL.documentsDirectory.appending(path: "test-client-tracked")
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
         let client = try Client(baseURL: baseURL)
@@ -56,13 +56,13 @@ struct ClientTests {
             author: "Test User <test@example.com>"
         )
 
-        let tracked = try client.listTrackedFiles(commitHash: initialCommitHash)
+        let tracked = try client.tracked(commitHash: initialCommitHash)
         #expect(tracked.count == 2)
         #expect(tracked[0].path == "foo/bar.txt")
         #expect(tracked[1].path == "foo/foo.txt")
     }
 
-    @Test("Commit")
+    @Test("Commit changes")
     func commit() async throws {
         let baseURL = URL.documentsDirectory.appending(path: "test-client-commit")
         defer { try? FileManager.default.removeItem(at: baseURL) }
@@ -93,7 +93,7 @@ struct ClientTests {
         #expect(blob.content.count > 0)
     }
 
-    @Test("Tree optimization - unchanged subtrees are reused")
+    @Test("Ensure tree optimization - unchanged subtrees are reused")
     func treeOptimizationTest() async throws {
         let baseURL = URL.documentsDirectory.appending(path: "test-client-tree-optimization")
         defer { try? FileManager.default.removeItem(at: baseURL) }
