@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import Wit
 
-@Suite("Object Storage Tests")
-struct ObjectStorageTests {
+@Suite("Object Store Tests")
+struct ObjectStoreTests {
 
     @Test("Blob storage")
     func simpleBlobStorage() async throws {

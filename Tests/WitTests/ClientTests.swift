@@ -10,7 +10,7 @@ struct ClientTests {
         let baseURL = URL.documentsDirectory.appending(path: "test-client-status")
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(baseURL: baseURL)
+        let client = try Client(baseURL)
         let dir = baseURL.appending(path: "Documents")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
@@ -46,7 +46,7 @@ struct ClientTests {
         let baseURL = URL.documentsDirectory.appending(path: "test-client-tracked")
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(baseURL: baseURL)
+        let client = try Client(baseURL)
         let fooDir = baseURL.appending(path: "foo")
         try FileManager.default.createDirectory(at: fooDir, withIntermediateDirectories: true)
         try "This is some foo".write(to: fooDir.appending(path: "foo.txt"), atomically: true, encoding: .utf8)
@@ -67,7 +67,7 @@ struct ClientTests {
         let baseURL = URL.documentsDirectory.appending(path: "test-client-commit")
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(baseURL: baseURL)
+        let client = try Client(baseURL)
         let dir = baseURL.appending(path: "documents")
         let subDir = dir.appending(path: "subdir")
 
@@ -87,7 +87,7 @@ struct ClientTests {
 
         let initialCommit = try client.storage.retrieve(initialCommitHash, as: Commit.self)
         #expect(initialCommit.message == "Initial commit")
-        #expect(initialCommit.parent == EmptyCommitHash)
+        #expect(initialCommit.parent == EmptyHash)
 
         let tree = try client.storage.retrieve(initialCommit.tree, as: Tree.self)
         #expect(tree.entries.count == 1)
@@ -115,7 +115,7 @@ struct ClientTests {
         let baseURL = URL.documentsDirectory.appending(path: "test-client-tree-optimization")
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let client = try Client(baseURL: baseURL)
+        let client = try Client(baseURL)
 
         // Create initial directory structure
         let dir = baseURL.appending(path: "dir")

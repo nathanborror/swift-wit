@@ -31,4 +31,4 @@ public struct Commit: Storable {
     public static let dateFormat = "yyyy-MM-dd HH:mm:ss Z"
 }
 
-public let EmptyCommitHash = "0000000000000000000000000000000000000000000000000000000000000000"
+public let EmptyHash = "0000000000000000000000000000000000000000000000000000000000000000"

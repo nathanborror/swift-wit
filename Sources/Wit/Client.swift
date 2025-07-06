@@ -1,27 +1,30 @@
 import Foundation
 
-public let WIT_DIR_NAME = ".wit"
-public let WIT_IGNORE: Set<String> = ["WIT_DIR_NAME", ".DS_Store"]
-
 public final class Client {
     let baseURL: URL
-    let witBaseURL: URL
-    let witHeadURL: URL
-    let witManifestURL: URL
-    let witLogsURL: URL
+
+    let witDir: URL
+    let witConfig: URL
+    let witHead: URL
+    let witManifest: URL
+    let witLogs: URL
+    let witObjects: URL
 
     let storage: ObjectStore
     let ignored: Set<String>
 
-    public init(baseURL: URL, ignorePaths: Set<String> = []) throws {
+    public init(_ baseURL: URL, objectsURL: URL? = nil, ignore: Set<String> = []) throws {
         self.baseURL = baseURL
-        self.witBaseURL = baseURL.appending(path: WIT_DIR_NAME)
-        self.witHeadURL = witBaseURL.appending(path: "HEAD")
-        self.witManifestURL = witBaseURL.appending(path: "manifest")
-        self.witLogsURL = witBaseURL.appending(path: "logs")
 
-        self.storage = try ObjectStore(baseURL: witBaseURL)
-        self.ignored = ignorePaths.union(WIT_IGNORE)
+        self.witDir = baseURL.appending(path: ".wit")
+        self.witConfig = witDir.appending(path: "config")
+        self.witHead = witDir.appending(path: "HEAD")
+        self.witManifest = witDir.appending(path: "manifest")
+        self.witLogs = witDir.appending(path: "logs")
+        self.witObjects = objectsURL ?? witDir.appending(path: "objects")
+
+        self.storage = try ObjectStore(baseURL: witObjects)
+        self.ignored = ignore.union([".wit", ".DS_Store"])
     }
 
     /// The current HEAD commit hash.
@@ -31,12 +34,12 @@ public final class Client {
     /// If no `HEAD` is present, the getter returns `nil`.
     public var head: String? {
         get {
-            guard FileManager.default.fileExists(atPath: witHeadURL.path) else { return nil }
-            let out = try? String(contentsOf: witHeadURL, encoding: .utf8)
+            guard FileManager.default.fileExists(atPath: witHead.path) else { return nil }
+            let out = try? String(contentsOf: witHead, encoding: .utf8)
             return out?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         set {
-            try? newValue?.write(to: witHeadURL, atomically: true, encoding: .utf8)
+            try? newValue?.write(to: witHead, atomically: true, encoding: .utf8)
         }
     }
 
@@ -71,7 +74,7 @@ public final class Client {
     ///   - previousCommitHash: The hash of the previous commit (if any). Defaults to an empty string.
     /// - Returns: The hash of the newly created commit.
     /// - Throws: An error if storing objects or writing metadata fails.
-    public func commit(message: String, author: String, timestamp: Date = .now, previousCommitHash: String = EmptyCommitHash) throws -> String {
+    public func commit(message: String, author: String, timestamp: Date = .now, previousCommitHash: String = EmptyHash) throws -> String {
         let previousCommit = try? storage.retrieve(previousCommitHash, as: Commit.self)
 
         var files = try treeFilesChanged(previousCommit?.tree)
@@ -138,7 +141,7 @@ public final class Client {
         let content = files.map {
             "\($0.mode) \($0.hash ?? "") \($0.path)"
         }.joined(separator: "\n")
-        try content.write(to: witManifestURL, atomically: true, encoding: .utf8)
+        try content.write(to: witManifest, atomically: true, encoding: .utf8)
     }
 
     private func treeFilesChanged(_ treeHash: String?) throws -> [FileRef] {
@@ -308,7 +311,7 @@ public final class Client {
         let timezone = timezoneOffset(commit.timestamp)
         let message = "\(commitHash) \(commit.parent) \(commit.author) \(timestamp) \(timezone) commit: \(commit.message)\n"
 
-        if let fileHandle = FileHandle(forUpdatingAtPath: witLogsURL.path) {
+        if let fileHandle = FileHandle(forUpdatingAtPath: witLogs.path) {
             defer { try? fileHandle.close() }
             do {
                 try fileHandle.seekToEnd()
@@ -321,7 +324,7 @@ public final class Client {
         } else {
             // If file doesn't exist, create it with the line
             do {
-                try message.write(to: witLogsURL, atomically: true, encoding: .utf8)
+                try message.write(to: witLogs, atomically: true, encoding: .utf8)
             } catch {
                 print("Failed to create file: \(error)")
             }

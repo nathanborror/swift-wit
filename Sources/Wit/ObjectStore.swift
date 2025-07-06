@@ -4,8 +4,6 @@ import CryptoKit
 
 public final class ObjectStore {
     public let baseURL: URL
-    public let objectsURL: URL
-    public let headURL: URL
 
     private let compressionThreshold: Int
     private let useCompression: Bool
@@ -18,9 +16,6 @@ public final class ObjectStore {
 
     public init(baseURL: URL, compressionThreshold: Int = 1024, useCompression: Bool = true) throws {
         self.baseURL = baseURL
-        self.objectsURL = baseURL.appending(path: "objects")
-        self.headURL = baseURL.appending(path: "HEAD")
-
         self.compressionThreshold = compressionThreshold
         self.useCompression = useCompression
 
@@ -165,15 +160,13 @@ public final class ObjectStore {
 
     private func initialize() throws {
         try createDirectoryIfNeeded(baseURL)
-        try createDirectoryIfNeeded(objectsURL)
-        try "".write(to: headURL, atomically: true, encoding: .utf8)
     }
 
     private func objectURL(_ hash: String) throws -> URL {
         let dir = String(hash.prefix(2))
         let file = String(hash.dropFirst(2))
-        let url = objectsURL.appending(path: dir).appending(path: file).standardizedFileURL
-        guard url.path.hasPrefix(objectsURL.standardized.path) else {
+        let url = baseURL.appending(path: dir).appending(path: file).standardizedFileURL
+        guard url.path.hasPrefix(baseURL.standardized.path) else {
             throw Error.pathTraversalAttempt
         }
         return url
