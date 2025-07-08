@@ -133,6 +133,8 @@ struct ObjectStoreTests {
         let content = "Hello, World!"
         let blob = Blob(string: content)
         let url = baseURL.appending(path: "test.txt")
+
+        try FileManager.default.createDirectoryIfNeeded(url)
         try content.write(to: url, atomically: true, encoding: .utf8)
 
         let blobHash = storage.computeHash(blob)

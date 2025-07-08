@@ -1,30 +1,24 @@
 import Foundation
+import CryptoKit
 
 public final class Client {
     let baseURL: URL
 
     let witDir: URL
-    let witConfig: URL
-    let witHead: URL
-    let witManifest: URL
-    let witLogs: URL
-    let witObjects: URL
-
     let storage: ObjectStore
     let ignored: Set<String>
 
     public init(_ baseURL: URL, objectsURL: URL? = nil, ignore: Set<String> = []) throws {
         self.baseURL = baseURL
 
-        self.witDir = baseURL.appending(path: ".wit")
-        self.witConfig = witDir.appending(path: "config")
-        self.witHead = witDir.appending(path: "HEAD")
-        self.witManifest = witDir.appending(path: "manifest")
-        self.witLogs = witDir.appending(path: "logs")
-        self.witObjects = objectsURL ?? witDir.appending(path: "objects")
+        self.witDir = baseURL.appending(path: ".wild")
 
-        self.storage = try ObjectStore(baseURL: witObjects)
-        self.ignored = ignore.union([".wit", ".DS_Store"])
+        for item in ["config", "HEAD", "manifest", "logs"] {
+            let url = witDir.appending(path: item)
+            try FileManager.default.createFileIfNeeded(url)
+        }
+        self.storage = try ObjectStore(baseURL: witDir.appending(path: "objects"))
+        self.ignored = ignore.union([".wild", ".DS_Store"])
     }
 
     /// The current HEAD commit hash.
@@ -34,12 +28,11 @@ public final class Client {
     /// If no `HEAD` is present, the getter returns `nil`.
     public var head: String? {
         get {
-            guard FileManager.default.fileExists(atPath: witHead.path) else { return nil }
-            let out = try? String(contentsOf: witHead, encoding: .utf8)
+            let out = try? String(contentsOf: witDir.appending(path: "HEAD"), encoding: .utf8)
             return out?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         set {
-            try? newValue?.write(to: witHead, atomically: true, encoding: .utf8)
+            try? newValue?.write(to: witDir.appending(path: "HEAD"), atomically: true, encoding: .utf8)
         }
     }
 
@@ -108,7 +101,7 @@ public final class Client {
         head = commitHash
 
         // Update Manifest
-        try writeManifest(commitHash: head!)
+        try writeManifest(head!)
 
         // Append log
         log(commitHash, commit: commit)
@@ -134,14 +127,111 @@ public final class Client {
         return files.values.sorted { $0.path < $1.path }
     }
 
+    public func fetch(remote: Remote) async throws {
+        let remoteDirURL = remote.baseURL.appending(path: ".wild")
+        let remoteObjectsURL = remoteDirURL.appending(path: "objects")
+        let remoteHeadURL = remoteDirURL.appending(path: "HEAD")
+
+        guard let remoteHead = try? String(contentsOf: remoteHeadURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !remoteHead.isEmpty else {
+            print("Remote HEAD not found")
+            return
+        }
+        let remoteObjectStore = try ObjectStore(baseURL: remoteObjectsURL)
+        let commitsToFetch = try reachableHashes(from: remoteHead, using: remoteObjectStore)
+
+        for hash in commitsToFetch {
+            if try !storage.exists(hash: hash) {
+                let srcURL = remoteObjectsURL.appendingPathComponent(hash)
+                let dstURL = storage.baseURL.appendingPathComponent(hash)
+
+                let (data, etag) = try await remote.get(url: srcURL, etag: nil)
+                // Figure out what to store (e.g. Commit, Tree or Object)
+            }
+        }
+    }
+
+    public func push(remote: Remote, privateKey: Curve25519.Signing.PrivateKey) async throws {
+        let remoteDirURL = remote.baseURL.appending(path: ".wild")
+        let remoteObjectsURL = remoteDirURL.appending(path: "objects")
+        let remoteHeadURL = remoteDirURL.appending(path: "HEAD")
+
+        guard let head, !head.isEmpty else {
+            print("Nothing to push: local HEAD not set")
+            return
+        }
+
+        // Get remote HEAD and all reachable hashes from local storage, compare with reachable hashes from remote
+        // storage and determine what needs to be pushed.
+
+        let remoteHead: String? = (try? String(contentsOf: remoteHeadURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteStore = try ObjectStore(baseURL: remoteObjectsURL)
+
+        let localReachable = try reachableHashes(from: head, using: storage)
+        let remoteReachable = (remoteHead != nil && !remoteHead!.isEmpty) ? try reachableHashes(from: remoteHead!, using: remoteStore) : []
+
+        let toPush = localReachable.subtracting(remoteReachable)
+        if toPush.isEmpty {
+            print("Nothing to push: remote up to date")
+            return
+        }
+
+        for hash in toPush {
+            let prefix = String(hash.prefix(2))
+            let suffix = String(hash.dropFirst(2))
+            let url = remoteObjectsURL.appendingPathComponent(prefix).appendingPathComponent(suffix)
+            let object = try storage.retrieve(hash)
+            _ = try await remote.put(url: url, data: object.content, mimetype: nil, etag: nil, privateKey: privateKey)
+        }
+
+        // Update remote HEAD
+        _ = try await remote.put(url: remoteHeadURL, data: head.data(using: .utf8)!, mimetype: nil, etag: nil, privateKey: privateKey)
+
+        // Update remote manifest
+        // let remoteManifestURL = remoteDirURL.appending(path: "manifest")
+        print("update remote manifest not implemented")
+
+        // Append log line(s)
+        // let remoteLogsURL = remoteDirURL.appending(path: "logs")
+        print("update remote logs not implemented")
+
+        // Finished
+        print("Pushed \(toPush.count) objects to \(remote)")
+    }
+
     // MARK: Private
 
-    private func writeManifest(commitHash: String) throws {
+    private func reachableHashes(from rootHash: String, using objectStore: ObjectStore) throws -> Set<String> {
+        var seen = Set<String>()
+        var stack: [String] = [rootHash]
+
+        while let hash = stack.popLast() {
+            if seen.contains(hash) { continue }
+            seen.insert(hash)
+
+            // Try to load as Commit, then as Tree, else as Blob
+
+            if let commit = try? objectStore.retrieve(hash, as: Commit.self) {
+                if !commit.tree.isEmpty {
+                    stack.append(commit.tree)
+                }
+                if !commit.parent.isEmpty && commit.parent != EmptyHash {
+                    stack.append(commit.parent)
+                }
+            } else if let tree = try? objectStore.retrieve(hash, as: Tree.self) {
+                for entry in tree.entries {
+                    stack.append(entry.hash)
+                }
+            } // TODO: else: Blob or unknown, don't need to traverse further
+        }
+        return seen
+    }
+
+    private func writeManifest(_ commitHash: String) throws {
         let files = try tracked(commitHash: commitHash)
         let content = files.map {
             "\($0.mode) \($0.hash ?? "") \($0.path)"
         }.joined(separator: "\n")
-        try content.write(to: witManifest, atomically: true, encoding: .utf8)
+        try content.write(to: witDir.appending(path: "manifest"), atomically: true, encoding: .utf8)
     }
 
     private func treeFilesChanged(_ treeHash: String?) throws -> [FileRef] {
@@ -311,7 +401,7 @@ public final class Client {
         let timezone = timezoneOffset(commit.timestamp)
         let message = "\(commitHash) \(commit.parent) \(commit.author) \(timestamp) \(timezone) commit: \(commit.message)\n"
 
-        if let fileHandle = FileHandle(forUpdatingAtPath: witLogs.path) {
+        if let fileHandle = FileHandle(forUpdatingAtPath: witDir.appending(path: "logs").path) {
             defer { try? fileHandle.close() }
             do {
                 try fileHandle.seekToEnd()
@@ -322,9 +412,8 @@ public final class Client {
                 print("Failed to append: \(error)")
             }
         } else {
-            // If file doesn't exist, create it with the line
-            do {
-                try message.write(to: witLogs, atomically: true, encoding: .utf8)
+            do { // If file doesn't exist, create it with the line
+                try message.write(to: witDir.appending(path: "logs"), atomically: true, encoding: .utf8)
             } catch {
                 print("Failed to create file: \(error)")
             }

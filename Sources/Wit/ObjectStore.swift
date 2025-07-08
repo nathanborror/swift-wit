@@ -18,16 +18,13 @@ public final class ObjectStore {
         self.baseURL = baseURL
         self.compressionThreshold = compressionThreshold
         self.useCompression = useCompression
-
-        try initialize()
     }
 
     public func store(_ object: Storable) throws -> String {
         let objectHash = computeHash(object)
         let objectURL = try objectURL(objectHash)
 
-        let objectDirURL = objectURL.deletingLastPathComponent()
-        try createDirectoryIfNeeded(objectDirURL)
+        try FileManager.default.createDirectoryIfNeeded(objectURL)
 
         var objectData = encode(object)
         var isCompressed = false
@@ -158,10 +155,6 @@ public final class ObjectStore {
 
     // MARK: Private
 
-    private func initialize() throws {
-        try createDirectoryIfNeeded(baseURL)
-    }
-
     private func objectURL(_ hash: String) throws -> URL {
         let dir = String(hash.prefix(2))
         let file = String(hash.dropFirst(2))
@@ -174,12 +167,6 @@ public final class ObjectStore {
 
     private func shouldCompress(compressionBytes: Int, originalBytes: Int) -> Bool {
         Double(compressionBytes) < Double(originalBytes) * 0.9 // Greater than 10% savings?
-    }
-
-    private func createDirectoryIfNeeded(_ url: URL) throws {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
-        }
     }
 
     // MARK: Encoders
