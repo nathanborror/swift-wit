@@ -70,8 +70,8 @@ struct LocalhostTests {
         #expect(files.count == 2)
     }
 
-    @Test("Rebase")
-    func rebase() async throws {
+    @Test("Reset")
+    func reset() async throws {
         let client = try Client()
         let (userID, privateKey) = try await client.register()
 
@@ -100,7 +100,7 @@ struct LocalhostTests {
         // Establish new empty client
         let newClient = try Client()
         try await newClient.register(userID: userID, privateKey: privateKey)
-        try await newClient.rebase()
+        try await newClient.reset()
 
         // HEAD should have changed with rebase
         let head = newClient.read(".wild/HEAD")

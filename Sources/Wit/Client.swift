@@ -278,7 +278,7 @@ public final class Client {
         }
     }
 
-    public func rebase() async throws {
+    public func reset() async throws {
         guard let remote else {
             throw Error.missingRemote
         }
