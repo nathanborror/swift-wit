@@ -224,7 +224,6 @@ public final class Client {
 
         // Append log
         try log(commitHash, commit: commit)
-
         return commitHash
     }
 
@@ -291,6 +290,12 @@ public final class Client {
 
         // Fetch objects and update local HEAD to remote HEAD
         try await fetch()
+
+        // TODO: Figure out state of remote HEAD
+        // If it is behind then don't change the local HEAD, if it's ahead then change it.
+        // Update local logs and manfest to reflect a changed local HEAD.
+
+        // Set local HEAD to remote
         try write(remoteHead, to: ".wild/HEAD")
     }
 
