@@ -100,7 +100,11 @@ public final class ObjectStore {
     }
 
     public func exists(url: URL) -> Bool {
-        return FileManager.default.fileExists(atPath: url.path)
+        if let scheme = url.scheme, scheme == "file" {
+            return FileManager.default.fileExists(atPath: url.path)
+        } else {
+            return true // TODO: Probably need perform a HEAD check and make this async
+        }
     }
 
     /// Computes the SHA-256 hash for a `Storable` object, including a header with its type and content length.
