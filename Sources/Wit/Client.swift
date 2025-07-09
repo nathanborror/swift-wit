@@ -261,22 +261,36 @@ public final class Client {
             throw Error.missingRemote
         }
 
-        let localHead = read(".wild/HEAD")
         let remoteHeadData = try await remote.get(path: ".wild/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-        guard let remoteHead, localHead != remoteHead else {
-            return
-        }
+        let localHead = read(".wild/HEAD")
+        guard let remoteHead, localHead != remoteHead else { return }
 
-        let commitsToFetch = try reachableHashes(from: remoteHead, using: remoteStorage)
-        for hash in commitsToFetch {
-            guard try !localStorage.exists(hash: hash) else { continue }
+        let remoteHashes = try reachableHashes(from: remoteHead, using: remoteStorage)
+        for hash in remoteHashes {
+            guard try !localStorage.exists(hash: hash) else {
+                continue
+            }
             let hashPath = localStorage.hashPath(hash)
             let path = ".wild/objects/\(hashPath)"
             let data = try await remote.get(path: path)
             try write(data, to: path)
         }
+    }
 
+    public func rebase() async throws {
+        guard let remote else {
+            throw Error.missingRemote
+        }
+
+        // Check if local HEAD is different from remote HEAD
+        let remoteHeadData = try await remote.get(path: ".wild/HEAD")
+        let remoteHead = String(data: remoteHeadData, encoding: .utf8)
+        let localHead = read(".wild/HEAD")
+        guard let remoteHead, localHead != remoteHead else { return }
+
+        // Fetch objects and update local HEAD to remote HEAD
+        try await fetch()
         try write(remoteHead, to: ".wild/HEAD")
     }
 

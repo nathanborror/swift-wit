@@ -62,6 +62,47 @@ struct LocalhostTests {
         try await newClient.register(userID: userID, privateKey: privateKey)
         try await newClient.fetch()
 
+        // HEAD should not have changed with fetch
+        let head = newClient.read(".wild/HEAD")
+        #expect(head == firstCommitHash)
+
+        let files = try newClient.tracked()
+        #expect(files.count == 2)
+    }
+
+    @Test("Rebase")
+    func rebase() async throws {
+        let client = try Client()
+        let (userID, privateKey) = try await client.register()
+
+        // First commit
+        try client.write("This is some foo", to: "foo.txt")
+        try client.write("This is some bar", to: "bar.txt")
+        let firstCommitHash = try client.commit(
+            message: "First commit",
+            author: "Test User <test@example.com>"
+        )
+        try await client.push()
+
+        // Second commit
+        try client.write("This is some updated foo", to: "foo.txt")
+        let secondCommitHash = try client.commit(
+            message: "Second commit",
+            author: "Test User <test@example.com>"
+        )
+        try await client.push()
+
+        // Delete second commit
+        let commitHashURL = client.localStorage!.hashURL(secondCommitHash)
+        try FileManager.default.removeItem(at: commitHashURL)
+        try client.write(firstCommitHash, to: ".wild/HEAD")
+
+        // Establish new empty client
+        let newClient = try Client()
+        try await newClient.register(userID: userID, privateKey: privateKey)
+        try await newClient.rebase()
+
+        // HEAD should have changed with rebase
         let head = newClient.read(".wild/HEAD")
         #expect(head == secondCommitHash)
 
