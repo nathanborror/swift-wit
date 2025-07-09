@@ -177,7 +177,7 @@ public final class ObjectStore {
         return url
     }
 
-    private func shouldCompress(compressionBytes: Int, originalBytes: Int) -> Bool {
+    func shouldCompress(compressionBytes: Int, originalBytes: Int) -> Bool {
         Double(compressionBytes) < Double(originalBytes) * 0.9 // Greater than 10% savings?
     }
 }
