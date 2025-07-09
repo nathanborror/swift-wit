@@ -264,7 +264,6 @@ public final class Client {
         let localHead = read(".wild/HEAD")
         let remoteHeadData = try await remote.get(path: ".wild/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-
         guard let remoteHead, localHead != remoteHead else {
             return
         }
@@ -279,23 +278,6 @@ public final class Client {
         }
 
         try write(remoteHead, to: ".wild/HEAD")
-
-//        guard let remoteHead = try? String(contentsOf: remoteHeadURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !remoteHead.isEmpty else {
-//            print("Remote HEAD not found")
-//            return
-//        }
-//        let remoteObjectStore = try ObjectStore(baseURL: remoteObjectsURL)
-//        let commitsToFetch = try reachableHashes(from: remoteHead, using: remoteObjectStore)
-//
-//        for hash in commitsToFetch {
-//            if try !storage.exists(hash: hash) {
-//                let srcURL = remoteObjectsURL.appendingPathComponent(hash)
-//                let dstURL = storage.baseURL.appendingPathComponent(hash)
-//
-//                let (data, etag) = try await remote.get(url: srcURL, etag: nil)
-//                // Figure out what to store (e.g. Commit, Tree or Object)
-//            }
-//        }
     }
 
     public func push() async throws {
@@ -375,10 +357,6 @@ public final class Client {
                 for entry in tree.entries {
                     stack.append(entry.hash)
                 }
-//            } else if let blob = try? objectStore.retrieve(hash, as: Blob.self) {
-//                print("blob")
-//            } else {
-//                print("fuck")
             }
         }
         return seen
