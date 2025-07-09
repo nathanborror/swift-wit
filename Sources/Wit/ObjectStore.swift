@@ -111,7 +111,7 @@ public final class ObjectStore {
     /// that both the object's type and its content size are part of the hash, similar to how Git computes object hashes.
     public func hash(for object: Storable) -> String {
         let data = object.encode()
-        return computeHash(data)
+        return hashCompute(data)
     }
 
     /// Computes the SHA-256 hash of a file at the given URL using memory mapping for efficiency.
@@ -133,7 +133,7 @@ public final class ObjectStore {
         guard fileSize > 0 else {
             var data = Data()
             data += headerData
-            return computeHash(data)
+            return hashCompute(data)
         }
 
         let fd = fileHandle.fileDescriptor
@@ -148,20 +148,29 @@ public final class ObjectStore {
             munmap(ptr, size)
         })
 
-        return computeHash(data)
+        return hashCompute(data)
     }
 
     // MARK: Private
 
-    private func computeHash(_ data: Data) -> String {
+    func hashURL(_ hash: String) -> URL {
+        let path = hashPath(hash)
+        return baseURL.appending(path: path).standardizedFileURL
+    }
+
+    func hashPath(_ hash: String) -> String {
+        let dir = String(hash.prefix(2))
+        let file = String(hash.dropFirst(2))
+        return "\(dir)/\(file)"
+    }
+
+    func hashCompute(_ data: Data) -> String {
         let hash = SHA256.hash(data: data)
         return hash.hexString
     }
 
-    private func objectURL(_ hash: String) throws -> URL {
-        let dir = String(hash.prefix(2))
-        let file = String(hash.dropFirst(2))
-        let url = baseURL.appending(path: dir).appending(path: file).standardizedFileURL
+    func objectURL(_ hash: String) throws -> URL {
+        let url = hashURL(hash)
         guard url.path.hasPrefix(baseURL.standardized.path) else {
             throw Error.pathTraversalAttempt
         }

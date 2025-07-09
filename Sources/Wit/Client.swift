@@ -271,13 +271,11 @@ public final class Client {
 
         let commitsToFetch = try reachableHashes(from: remoteHead, using: remoteStorage)
         for hash in commitsToFetch {
-            if try !localStorage.exists(hash: hash) {
-                let prefix = String(hash.prefix(2))
-                let suffix = String(hash.dropFirst(2))
-                let path = ".wild/objects/\(prefix)/\(suffix)"
-                let data = try await remote.get(path: path)
-                try write(data, to: path)
-            }
+            guard try !localStorage.exists(hash: hash) else { continue }
+            let hashPath = localStorage.hashPath(hash)
+            let path = ".wild/objects/\(hashPath)"
+            let data = try await remote.get(path: path)
+            try write(data, to: path)
         }
 
         try write(remoteHead, to: ".wild/HEAD")
@@ -328,10 +326,10 @@ public final class Client {
         }
 
         for hash in toPush {
-            let prefix = String(hash.prefix(2))
-            let suffix = String(hash.dropFirst(2))
             let data = try localStorage.retrieveData(hash)
-            _ = try await remote.put(path: ".wild/objects/\(prefix)/\(suffix)", data: data, mimetype: nil)
+            let hashPath = localStorage.hashPath(hash)
+            let path = ".wild/objects/\(hashPath)"
+            _ = try await remote.put(path: path, data: data, mimetype: nil)
         }
 
         // Update remote HEAD
