@@ -48,7 +48,8 @@ struct LocalhostTests {
         try client.write("This is some updated foo", to: "foo.txt")
         let secondCommitHash = try client.commit(
             message: "Second commit",
-            author: "Test User <test@example.com>"
+            author: "Test User <test@example.com>",
+            previousCommitHash: firstCommitHash
         )
         try await client.push()
 
@@ -88,7 +89,8 @@ struct LocalhostTests {
         try client.write("This is some updated foo", to: "foo.txt")
         let secondCommitHash = try client.commit(
             message: "Second commit",
-            author: "Test User <test@example.com>"
+            author: "Test User <test@example.com>",
+            previousCommitHash: firstCommitHash
         )
         try await client.push()
 
