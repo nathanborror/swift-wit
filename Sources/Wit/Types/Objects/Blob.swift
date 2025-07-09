@@ -4,8 +4,8 @@ public struct Blob: Storable {
     public let type = Object.Kind.blob
     public let content: Data
 
-    public init(content: Data) {
-        self.content = content
+    public init?(data: Data) {
+        self.content = data
     }
 
     public init(string: String) {
@@ -15,5 +15,9 @@ public struct Blob: Storable {
     public init(url: URL) throws {
         let data = try Data(contentsOf: url)
         self.content = data
+    }
+
+    public func encode() -> Data {
+        return applyHeader(content)
     }
 }

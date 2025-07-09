@@ -16,3 +16,20 @@ Tasks:
 - [ ] Create a user config file and store it in .wit/user (untracked)
 - [ ] Add rebase to check for changes and conflicts that could be on the server
 - [ ] Add push to send changes to server, objects before updating head
+
+Example config file:
+
+    {
+        "version": 1.0,
+        "remotes": [
+            {
+                "name": "origin",
+                "url": "http://localhost:8080"
+            }
+        ],
+        "user": {
+            "id": "<USER_ID>",
+            "name": "Nathan Borror",
+            "publicKey": "<PUBLIC_KEY>"
+        }
+    }

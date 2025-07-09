@@ -1,27 +1,27 @@
 import Foundation
 import CryptoKit
 
-public typealias ETag = String
+public typealias PrivateKey = Curve25519.Signing.PrivateKey
 
 public protocol Remote {
-    var baseURL: URL { get }
+    func register(userID: String, privateKey: PrivateKey) async throws
+    func register() async throws -> (String, PrivateKey)
+    func unregister() async throws
 
-    func head(url: URL) async throws -> ETag
-    func get(url: URL, etag: String?) async throws -> (Data, ETag)
-    func put(url: URL, data: Data, mimetype: String?, etag: String?, privateKey: Curve25519.Signing.PrivateKey) async throws -> ETag?
-    func delete(url: URL, etag: String?, privateKey: Curve25519.Signing.PrivateKey) async throws
+    func get(path: String) async throws -> Data
+    func put(path: String, data: Data, mimetype: String?) async throws
+    func delete(path: String) async throws
 }
 
 public enum RemoteError: Swift.Error, CustomStringConvertible {
     case missingURL
     case missingURLMethod
     case missingURLPath
+    case missingPrivateKey
+    case missingUserID
     case badServerResponse
     case badServerURL
-    case preconditionFailed
-    case notModified
     case requestFailed(Int, String?)
-    case invalidPrivateKey
 
     public var description: String {
         switch self {
@@ -31,18 +31,16 @@ public enum RemoteError: Swift.Error, CustomStringConvertible {
             "Missing URL method"
         case .missingURLPath:
             "Missing URL path"
+        case .missingPrivateKey:
+            "Missing private key"
+        case .missingUserID:
+            "Missing user id"
         case .badServerResponse:
             "The server returned an invalid response."
         case .badServerURL:
             "The provided URL is invalid."
-        case .preconditionFailed:
-            "The file on the server is different than the file trying to be uploaded."
-        case .notModified:
-            "The file on the server is the same as the cached file."
         case .requestFailed(let statusCode, let description):
             "Request failed with status code \(statusCode): \(description ?? "no description")"
-        case .invalidPrivateKey:
-            "Invalid private key"
         }
     }
 }
