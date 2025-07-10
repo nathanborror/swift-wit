@@ -1,15 +1,13 @@
 import Foundation
 import OSLog
-import CryptoKit
 
-private let logger = Logger(subsystem: "Remote", category: "Wit")
+private let logger = Logger(subsystem: "RemoteHTTP", category: "Wit")
 
-public actor RemoteLocalhost: Remote {
+public actor RemoteHTTP: Remote {
     private let baseURL: URL
+
     private let session: URLSession
     private let maxConcurrentUploads = 5
-    private var userID: String? = nil
-    private var privateKey: PrivateKey? = nil
 
     public init(baseURL: URL) {
         self.baseURL = baseURL
@@ -21,79 +19,49 @@ public actor RemoteLocalhost: Remote {
         self.session = URLSession(configuration: configuration)
     }
 
-    public func register(userID: String, privateKey: PrivateKey) async throws {
-        self.userID = userID
-        self.privateKey = privateKey
-    }
+    public func exists(path: String) async throws -> Bool {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = "HEAD"
 
-    public func register() async throws -> (String, PrivateKey) {
-        userID = UUID().uuidString
-        privateKey = Curve25519.Signing.PrivateKey()
-
-        guard let userID else {
-            throw RemoteError.missingUserID
-        }
-        guard let privateKey else {
-            throw RemoteError.missingPrivateKey
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RemoteError.badServerResponse
         }
 
-        let publicKey = privateKey.publicKey.rawRepresentation.base64EncodedString()
-        let url = baseURL.appending(path: "register")
-        let data = """
-            {"id": "\(userID)", "publicKey": "\(publicKey)"}
-            """.data(using: .utf8)!
-        let _ = try await put(url: url, data: data, mimetype: "application/json")
-        return (userID, privateKey)
-    }
-
-    public func unregister() async throws {
-        guard let userID else {
-            throw RemoteError.missingUserID
+        switch httpResponse.statusCode {
+        case 200:
+            logger.info("HEAD (\(request.url?.path ?? ""))")
+            return true
+        case 404:
+            logger.info("HEAD (\(request.url?.path ?? "")): Not Found")
+            return false
+        default:
+            logger.error("HEAD Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: data, encoding: .utf8)!)")
+            throw RemoteError.requestFailed(httpResponse.statusCode, String(data: data, encoding: .utf8))
         }
-        let unregisterURL = URL(string: "http://localhost:8080/\(userID)/unregister")!
-        let _ = try await put(url: unregisterURL, data: Data(), mimetype: nil)
     }
 
     public func get(path: String) async throws -> Data {
-        guard let userID else { throw RemoteError.missingUserID }
-        let url = baseURL.appending(path: userID).appending(path: path)
-        return try await get(url: url)
-    }
-
-    public func put(path: String, data: Data, mimetype: String?) async throws {
-        guard let userID else { throw RemoteError.missingUserID }
-        let url = baseURL.appending(path: userID).appending(path: path)
-        return try await put(url: url, data: data, mimetype: mimetype)
-    }
-
-    public func delete(path: String) async throws {
-        guard let userID else { throw RemoteError.missingUserID }
-        let url = baseURL.appending(path: userID).appending(path: path)
-        try await delete(url: url)
-    }
-
-    // MARK: Private
-
-    private func get(url: URL) async throws -> Data {
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "GET"
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw RemoteError.badServerResponse
         }
+
         switch httpResponse.statusCode {
         case 200:
-            logger.info("GET (\(url.path))")
+            logger.info("GET (\(request.url?.path ?? ""))")
             return data
         default:
-            logger.error("GET Error (\(url.path), \(httpResponse.statusCode)): \(String(data: data, encoding: .utf8)!)")
+            logger.error("GET Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: data, encoding: .utf8)!)")
             throw RemoteError.requestFailed(httpResponse.statusCode, String(data: data, encoding: .utf8))
         }
     }
 
-    private func put(url: URL, data: Data, mimetype: String?) async throws {
-        var request = URLRequest(url: url)
+    public func put(path: String, data: Data, mimetype: String?, privateKey: PrivateKey?) async throws {
+        var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "PUT"
         if let mimetype {
             request.setValue(mimetype, forHTTPHeaderField: "Content-Type")
@@ -106,6 +74,7 @@ public actor RemoteLocalhost: Remote {
         guard let httpResponse = resp as? HTTPURLResponse else {
             throw RemoteError.badServerResponse
         }
+
         switch httpResponse.statusCode {
         case 200:
             logger.info("PUT (\(request.url?.path ?? "."))")
@@ -116,14 +85,12 @@ public actor RemoteLocalhost: Remote {
         }
     }
 
-    private func delete(url: URL) async throws {
-        guard let privateKey else {
-            throw RemoteError.missingPrivateKey
-        }
-
-        var request = URLRequest(url: url)
+    public func delete(path: String, privateKey: PrivateKey?) async throws {
+        var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "DELETE"
-        request = try sign(request: request, privateKey: privateKey)
+        if let privateKey {
+            request = try sign(request: request, privateKey: privateKey)
+        }
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -132,16 +99,22 @@ public actor RemoteLocalhost: Remote {
 
         switch httpResponse.statusCode {
         case 200, 204:
-            logger.info("DELETE (\(url.path))")
+            logger.info("DELETE (\(request.url?.path ?? ""))")
             return
         default:
             let message = String(data: data, encoding: .utf8) ?? "Unknown"
-            logger.error("DELETE Error (\(url.path), \(httpResponse.statusCode)): \(message)")
+            logger.error("DELETE Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(message)")
             throw RemoteError.requestFailed(httpResponse.statusCode, message)
         }
     }
 
-    private func sign(request: URLRequest, privateKey: Curve25519.Signing.PrivateKey) throws -> URLRequest {
+    public func list(path: String) async throws -> [String: URL] {
+        return [:]
+    }
+
+    // MARK: - Private
+
+    private func sign(request: URLRequest, privateKey: PrivateKey) throws -> URLRequest {
         var request = request
         guard let method = request.httpMethod else {
             throw RemoteError.missingURLMethod

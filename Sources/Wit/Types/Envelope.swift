@@ -1,9 +1,8 @@
 import Foundation
 
-public struct Object {
+public struct Envelope {
     public let kind: Kind
     public let content: Data
-    public let size: Int
 
     public enum Kind: String {
         case blob
@@ -22,7 +21,7 @@ public struct Object {
         }
 
         let parts = header.split(separator: " ")
-        guard parts.count == 2, let kind = Object.Kind(rawValue: String(parts[0])), let size = Int(parts[1]) else {
+        guard parts.count == 2, let kind = Self.Kind(rawValue: String(parts[0])) else {
             return nil
         }
 
@@ -31,6 +30,16 @@ public struct Object {
 
         self.kind = kind
         self.content = content
-        self.size = size
+    }
+
+    public init(storable: any Storable) {
+        self.kind = storable.kind
+        self.content = storable.encode()
+    }
+
+    public func encode() -> Data {
+        let header = "\(kind.rawValue) \(content.count)\0"
+        let headerData = header.data(using: .utf8)!
+        return headerData + content
     }
 }

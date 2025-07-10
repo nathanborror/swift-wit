@@ -1,35 +1,18 @@
 import Foundation
+import OSLog
 import CryptoKit
+
+private let logger = Logger(subsystem: "Client", category: "Wit")
 
 public final class Client {
 
-    public struct Configuration {
-        public var localURL: URL
-        public var remoteURL: URL
-        public var remote: Remote
-        public var ignore: Set<String>
+    var workingPath: String
+    var privateKey: Remote.PrivateKey
+    var ignore: Set<String> = [".wild", ".DS_Store"]
 
-        public init(localURL: URL = .documentsDirectory, remoteURL: URL? = nil, remote: Remote? = nil, ignore: Set<String>? = nil) {
-            self.localURL = localURL
-            self.remoteURL = remoteURL ?? .init(string: "http://localhost:8080")!
-            self.remote = remote ?? RemoteLocalhost(baseURL: self.remoteURL)
-            self.ignore = ignore ?? [".wild", ".DS_Store"]
-        }
-    }
-
-    let configuration: Configuration
-
-    var userID: String?
-    var privateKey: PrivateKey?
-    var remote: Remote?
-
-    var localUserURL: URL?
-    var localUserRepoDir: URL?
-    var localStorage: ObjectStore?
-
-    var remoteUserURL: URL?
-    var remoteUserRepoDir: URL?
-    var remoteStorage: ObjectStore?
+    let localBaseURL: URL
+    let local: Remote
+    let store: ObjectStore
 
     public enum Error: Swift.Error {
         case missingUserID
@@ -40,118 +23,41 @@ public final class Client {
         case missingRemoteStorage
     }
 
-    public init(configuration: Configuration = .init()) throws {
-        self.configuration = configuration
-        self.remote = configuration.remote
-    }
-
-    /// Registers a new user with the remote host by generating a user ID and private key that are stored on the client.
-    @discardableResult
-    public func register() async throws -> (String, PrivateKey) {
-        guard let remote else {
-            throw Error.missingRemote
-        }
-        let (userID, privateKey) = try await remote.register()
-        try await register(userID: userID, privateKey: privateKey)
-        return (userID, privateKey)
-    }
-
-    /// Registers a user with the client by setting the user ID and private key directly rather than through the remote host.
-    public func register(userID: String, privateKey: PrivateKey) async throws {
-        self.userID = userID
+    public init(workingPath: String, privateKey: Remote.PrivateKey) {
+        self.workingPath = workingPath
         self.privateKey = privateKey
-        try await remote?.register(userID: userID, privateKey: privateKey)
-        try initialize()
+
+        self.localBaseURL = .documentsDirectory.appending(path: workingPath)
+        self.local = RemoteDisk(baseURL: localBaseURL)
+        self.store = ObjectStore(remote: local)
     }
 
-    /// Initializes the client by setting the necessary properties and establishing critical local files.
-    public func initialize() throws {
-        guard let userID else {
-            throw Error.missingUserID
-        }
-        localUserURL = configuration.localURL.appending(path: userID)
-        localUserRepoDir = localUserURL!.appending(path: ".wild")
-        localStorage = try ObjectStore(baseURL: localUserRepoDir!.appending(path: "objects"))
-
-        remoteUserURL = configuration.remoteURL.appending(path: userID)
-        remoteUserRepoDir = remoteUserURL!.appending(path: ".wild")
-        remoteStorage = try ObjectStore(baseURL: remoteUserRepoDir!.appending(path: "objects"))
-
-        for item in ["config", "HEAD", "manifest", "logs"] {
-            let url = localUserRepoDir!.appending(path: item)
-            try FileManager.default.createFileIfNeeded(url)
-        }
+    public func read(_ path: String) async throws -> String? {
+        let data = try await local.get(path: path)
+        return String(data: data, encoding: .utf8)
     }
 
-    /// Unregisters the user and nullifies the client. This is destructive by default — deletes the user directory on the remote host and locally.
-    public func unregister(deleteLocal: Bool = true, deleteRemote: Bool = true) async throws {
-        guard let userRootURL = localUserURL else {
-            throw Error.missingLocalEndpoint
-        }
-
-        if deleteRemote {
-            try await remote?.unregister()
-        }
-        if deleteLocal {
-            try FileManager.default.removeItem(at: userRootURL)
-        }
-
-        userID = nil
-        privateKey = nil
-
-        localUserURL = nil
-        localUserRepoDir = nil
-        localStorage = nil
-
-        remoteUserURL = nil
-        remoteUserRepoDir = nil
-        remoteStorage = nil
+    public func write(_ text: String, path: String, mimetype: String? = nil) async throws {
+        try await write(text.data(using: .utf8) ?? Data(), path: path)
     }
 
-    /// Returns the contents of a file for a given path, always scoped to the user folder.
-    public func read(_ path: String) -> String? {
-        guard let url = localUserURL?.appending(path: path) else { return nil }
-        return try? String(contentsOf: url, encoding: .utf8)
+    public func write(_ data: Data, path: String, mimetype: String? = nil) async throws {
+        try await local.put(path: path, data: data, mimetype: mimetype, privateKey: privateKey)
     }
 
-    /// Locally writes the contents of a string to the given file path.
-    public func write(_ input: String, to path: String) throws {
-        try write(input.data(using: .utf8) ?? Data(), to: path)
-    }
-
-    /// Locally writes the data to the given file path.
-    public func write(_ input: Data, to path: String) throws {
-        guard let url = localUserURL?.appending(path: path) else {
-            throw Error.missingLocalEndpoint
-        }
-        try FileManager.default.createDirectoryIfNeeded(url)
-        try input.write(to: url, options: [.atomic])
-    }
-
-    /// Locally deletes the given file path.
-    public func delete(_ path: String) throws {
-        guard let url = localUserURL?.appending(path: path) else {
-            throw Error.missingLocalEndpoint
-        }
-        try FileManager.default.removeItem(at: url)
+    public func delete(_ path: String) async throws {
+        try await local.delete(path: path, privateKey: privateKey)
     }
 
     /// Returns the working directory status compared to a specific commit or HEAD.
     ///
     /// This method determines which files have been modified, added, or deleted relative to the provided commit hash. If no commit hash is specified, it
     /// compares to the current HEAD. The returned `Status` object lists the paths of changed files categorized by their change type.
-    ///
-    /// - Parameter commitHash: The commit hash to compare against. If `nil`, uses the current HEAD.
-    /// - Returns: A `Status` object with arrays of modified, added, and deleted file paths.
-    /// - Throws: An error if the commit cannot be retrieved.
-    public func status(commitHash: String? = nil) throws -> Status {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
-        let head = read(".wild/HEAD")
+    public func status(commitHash: String? = nil) async throws -> Status {
+        let head = try await read(".wild/HEAD")
         let commitHash = commitHash ?? head ?? ""
-        let commit = try localStorage.retrieve(commitHash, as: Commit.self)
-        let changed = try treeFilesChanged(commit.tree)
+        let commit = try await store.retrieve(commitHash, as: Commit.self)
+        let changed = try await treeFilesChanged(commit.tree)
         return .init(
             modified: changed.filter { $0.kind == .modified }.map { $0.path },
             added: changed.filter { $0.kind == .added }.map { $0.path },
@@ -163,44 +69,33 @@ public final class Client {
     ///
     /// This method identifies all files that have been added, modified, or deleted since the previous commit. It then writes a new tree and commit object to the
     /// object store. The HEAD and manifest are updated to reflect the new commit.
-    ///
-    /// - Parameters:
-    ///   - message: The commit message describing the changes.
-    ///   - author: The author of the commit.
-    ///   - timestamp: The time of the commit (defaults to current time).
-    ///   - previousCommitHash: The hash of the previous commit (if any). Defaults to an empty string.
-    /// - Returns: The hash of the newly created commit.
-    /// - Throws: An error if storing objects or writing metadata fails.
     @discardableResult
-    public func commit(message: String, author: String, timestamp: Date = .now, previousCommitHash: String? = nil) throws -> String {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
-        guard let localUserURL else {
-            throw Error.missingLocalEndpoint
-        }
+    public func commit(message: String, author: String, timestamp: Date = .now, previousCommitHash: String? = nil) async throws -> String {
 
         // Previous commit, if it exists
         let previousCommit: Commit?
         if let previousCommitHash {
-            previousCommit = try? localStorage.retrieve(previousCommitHash, as: Commit.self)
+            previousCommit = try? await store.retrieve(previousCommitHash, as: Commit.self)
         } else {
             previousCommit = nil
         }
 
         // Determine which files in the directory tree have changed
-        var files = try treeFilesChanged(previousCommit?.tree)
+        var files = try await treeFilesChanged(previousCommit?.tree)
         for (index, file) in files.enumerated() {
             if file.kind != .deleted {
-                let fileURL = localUserURL.appending(path: file.path)
-                let blob = try Blob(url: fileURL)
-                let hash = try localStorage.store(blob)
-                files[index] = file.apply(hash: hash)
+                let data = try await local.get(path: file.path)
+                if let blob = Blob(data: data) {
+                    let hash = try await store.store(blob, privateKey: privateKey)
+                    files[index] = file.apply(hash: hash)
+                } else {
+                    logger.error("Error creating blob")
+                }
             }
         }
 
         // Build new tree structure
-        let treeHash = try updateTreesForChangedPaths(
+        let treeHash = try await updateTreesForChangedPaths(
             files: files,
             previousTreeHash: previousCommit?.tree ?? ""
         )
@@ -213,17 +108,17 @@ public final class Client {
             message: message,
             timestamp: timestamp
         )
-        let commitHash = try localStorage.store(commit)
+        let commitHash = try await store.store(commit, privateKey: privateKey)
 
         // Update HEAD
-        try write(commitHash, to: ".wild/HEAD")
+        try await write(commitHash, path: ".wild/HEAD")
 
         // Update Manifest
-        let manifest = try buildManifest(commitHash)
-        try write(manifest, to: ".wild/manifest")
+        let manifest = try await buildManifest(commitHash)
+        try await write(manifest, path: ".wild/manifest")
 
         // Append log
-        try log(commitHash, commit: commit)
+        try await log(commitHash, commit: commit)
         return commitHash
     }
 
@@ -231,85 +126,58 @@ public final class Client {
     ///
     /// For the specified commit hash (or HEAD if none provided), this returns a sorted array of `FileRef` objects representing all files stored in the
     /// commit's tree.
-    ///
-    /// - Parameter commitHash: The commit hash to inspect. If `nil`, uses the current HEAD.
-    /// - Returns: An array of `FileRef` values for each tracked file, sorted by path.
-    /// - Throws: An error if the commit or tree cannot be retrieved.
-    public func tracked(commitHash: String? = nil) throws -> [FileRef] {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
-        let head = read(".wild/HEAD")
-        let commitHash = commitHash ?? head ?? ""
+    public func tracked(commitHash: String? = nil) async throws -> [FileRef] {
+        let head = try? await local.get(path: ".wild/HEAD")
+        let commitHash = commitHash ?? String(data: head ?? Data(), encoding: .utf8) ?? ""
         if commitHash.isEmpty {
             return []
         }
-        let commit = try localStorage.retrieve(commitHash, as: Commit.self)
-        let files = try treeFiles(commit.tree, path: "")
+
+        let commit = try await store.retrieve(commitHash, as: Commit.self)
+        let files = try await treeFiles(commit.tree, path: "")
         return files.values.sorted { $0.path < $1.path }
     }
 
-    public func fetch() async throws {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
-        guard let remoteStorage else {
-            throw Error.missingRemoteStorage
-        }
-        guard let remote else {
-            throw Error.missingRemote
-        }
-
+    public func fetch(remote: Remote) async throws {
         let remoteHeadData = try await remote.get(path: ".wild/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-        let localHead = read(".wild/HEAD")
+        let localHead = try await read(".wild/HEAD")
         guard let remoteHead, localHead != remoteHead else { return }
 
-        let remoteHashes = try reachableHashes(from: remoteHead, using: remoteStorage)
+        let remoteStore = ObjectStore(remote: remote)
+        let remoteHashes = try await reachableHashes(from: remoteHead, using: remoteStore)
         for hash in remoteHashes {
-            guard try !localStorage.exists(hash: hash) else {
+            guard try await !store.exists(hash) else {
                 continue
             }
-            let hashPath = localStorage.hashPath(hash)
+            let hashPath = store.hashPath(hash)
             let path = ".wild/objects/\(hashPath)"
             let data = try await remote.get(path: path)
-            try write(data, to: path)
+            try await write(data, path: path)
         }
     }
 
-    public func reset() async throws {
-        guard let remote else {
-            throw Error.missingRemote
-        }
+    public func reset(remote: Remote) async throws {
 
         // Check if local HEAD is different from remote HEAD
         let remoteHeadData = try await remote.get(path: ".wild/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-        let localHead = read(".wild/HEAD")
+        let localHead = try  await read(".wild/HEAD")
         guard let remoteHead, localHead != remoteHead else { return }
 
         // Fetch objects and update local HEAD to remote HEAD
-        try await fetch()
+        try await fetch(remote: remote)
 
         // TODO: Figure out state of remote HEAD
         // If it is behind then don't change the local HEAD, if it's ahead then change it.
         // Update local logs and manfest to reflect a changed local HEAD.
 
         // Set local HEAD to remote
-        try write(remoteHead, to: ".wild/HEAD")
+        try await write(remoteHead, path: ".wild/HEAD")
     }
 
-    public func push() async throws {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
-        guard let remoteStorage else {
-            throw Error.missingRemoteStorage
-        }
-        guard let remote else {
-            throw Error.missingRemote
-        }
-        guard let head = read(".wild/HEAD"), !head.isEmpty else {
+    public func push(remote: Remote) async throws {
+        guard let head = try await read(".wild/HEAD"), !head.isEmpty else {
             print("Nothing to push: local HEAD not set")
             return
         }
@@ -317,24 +185,26 @@ public final class Client {
         // Get remote HEAD and all reachable hashes from local storage, compare with reachable hashes from remote
         // storage and determine what needs to be pushed.
 
-        let remoteHead = await remoteHead
-        let remoteReachable = (remoteHead != nil && !remoteHead!.isEmpty) ? try reachableHashes(from: remoteHead!, using: remoteStorage) : []
-        let localReachable = try reachableHashes(from: head, using: localStorage)
+        let remoteStore = ObjectStore(remote: remote)
+        let remoteHeadData = try? await remote.get(path: ".wild/HEAD")
+        let remoteHead = String(data: remoteHeadData ?? Data(), encoding: .utf8) ?? ""
+
+        let remoteReachable = (!remoteHead.isEmpty) ? try await reachableHashes(from: remoteHead, using: remoteStore) : []
+        let localReachable = try await reachableHashes(from: head, using: store)
         let toPush = localReachable.subtracting(remoteReachable)
+
         if toPush.isEmpty {
             print("Nothing to push: remote up to date")
             return
         }
 
         for hash in toPush {
-            let data = try localStorage.retrieveData(hash)
-            let hashPath = localStorage.hashPath(hash)
-            let path = ".wild/objects/\(hashPath)"
-            _ = try await remote.put(path: path, data: data, mimetype: nil)
+            let envelope = try await store.retrieve(hash)
+            let _ = try await remoteStore.store(envelope, privateKey: privateKey)
         }
 
         // Update remote HEAD
-        _ = try await remote.put(path: ".wild/HEAD", data: head.data(using: .utf8)!, mimetype: nil)
+        _ = try await remote.put(path: ".wild/HEAD", data: head.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
 
         // Update remote manifest
         // let remoteManifestURL = remoteDirURL.appending(path: "manifest")
@@ -350,14 +220,7 @@ public final class Client {
 
     // MARK: Private
 
-    var remoteHead: String? {
-        get async {
-            let data = try? await remote?.get(path: ".wild/HEAD")
-            return (data != nil) ? String(data: data!, encoding: .utf8) : nil
-        }
-    }
-
-    private func reachableHashes(from rootHash: String, using objectStore: ObjectStore) throws -> Set<String> {
+    private func reachableHashes(from rootHash: String, using objectStore: ObjectStore) async throws -> Set<String> {
         var seen = Set<String>()
         var stack: [String] = [rootHash]
 
@@ -365,14 +228,14 @@ public final class Client {
             if seen.contains(hash) { continue }
             seen.insert(hash)
 
-            if let commit = try? objectStore.retrieve(hash, as: Commit.self) {
+            if let commit = try? await store.retrieve(hash, as: Commit.self) {
                 if !commit.tree.isEmpty {
                     stack.append(commit.tree)
                 }
                 if let parent = commit.parent {
                     stack.append(parent)
                 }
-            } else if let tree = try? objectStore.retrieve(hash, as: Tree.self) {
+            } else if let tree = try? await store.retrieve(hash, as: Tree.self) {
                 for entry in tree.entries {
                     stack.append(entry.hash)
                 }
@@ -381,24 +244,21 @@ public final class Client {
         return seen
     }
 
-    private func buildManifest(_ commitHash: String) throws -> String {
-        let files = try tracked(commitHash: commitHash)
+    private func buildManifest(_ commitHash: String) async throws -> String {
+        let files = try await tracked(commitHash: commitHash)
         return files
             .map { "\($0.mode) \($0.hash ?? "") \($0.path)" }
             .joined(separator: "\n")
     }
 
-    private func treeFilesChanged(_ treeHash: String?) throws -> [FileRef] {
-        guard let localUserURL else {
-            throw Error.missingLocalEndpoint
-        }
+    private func treeFilesChanged(_ treeHash: String?) async throws -> [FileRef] {
         var changes: [FileRef] = []
 
         // Build a map of previous file states
-        let previousFiles = try treeFiles(treeHash)
+        let previousFiles = try await treeFiles(treeHash)
 
         // Scan current working directory
-        let currentFiles = try files(within: localUserURL)
+        let currentFiles = try await files(within: "")
 
         // Find additions and modifications
         for (path, fileRef) in currentFiles {
@@ -418,17 +278,14 @@ public final class Client {
         return changes
     }
 
-    private func treeFiles(_ treeHash: String?, path: String = "") throws -> [String: FileRef] {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
+    private func treeFiles(_ treeHash: String?, path: String = "") async throws -> [String: FileRef] {
         var out: [String: FileRef] = [:]
         guard let treeHash else { return out }
-        let tree = try localStorage.retrieve(treeHash, as: Tree.self)
+        let tree = try await store.retrieve(treeHash, as: Tree.self)
         for entry in tree.entries {
             let fullPath = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
             if entry.mode == .directory {
-                let files = try treeFiles(entry.hash, path: fullPath)
+                let files = try await treeFiles(entry.hash, path: fullPath)
                 out.merge(files, uniquingKeysWith: { _, new in new })
             } else {
                 out[fullPath] = .init(path: fullPath, hash: entry.hash, mode: entry.mode)
@@ -437,21 +294,12 @@ public final class Client {
         return out
     }
 
-    private func files(within url: URL) throws -> [String: FileRef] {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
+    private func files(within path: String) async throws -> [String: FileRef] {
+        let files = try await local.list(path: path)
         var out: [String: FileRef] = [:]
-        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
-            return out
-        }
-        for case let fileURL as URL in enumerator {
-            let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
+        for (relativePath, url) in files {
             guard !shouldIgnore(path: relativePath) else { continue }
-            guard let isFile = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile, isFile else {
-                continue
-            }
-            if let hash = try? localStorage.hash(for: fileURL) {
+            if let hash = try? store.hash(for: url) {
                 out[relativePath] = .init(path: relativePath, hash: hash, mode: .normal)
             }
         }
@@ -459,7 +307,7 @@ public final class Client {
     }
 
     // TODO: Review — was generated
-    private func updateTreesForChangedPaths(files: [FileRef], previousTreeHash: String) throws -> String {
+    private func updateTreesForChangedPaths(files: [FileRef], previousTreeHash: String) async throws -> String {
         var changesByDirectory: [String: Set<String>] = [:]
 
         for file in files {
@@ -478,10 +326,10 @@ public final class Client {
         }
 
         // Load previous tree structure
-        let previousTreeCache = try treeStructure(previousTreeHash)
+        let previousTreeCache = try await treeStructure(previousTreeHash)
 
         // Build trees bottom-up
-        return try buildTreeRecursively(
+        return try await buildTreeRecursively(
             directory: "",
             changedSubitems: changesByDirectory,
             files: files,
@@ -490,21 +338,17 @@ public final class Client {
     }
 
     // TODO: Review — was generated
-    private func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [FileRef], previousTreeCache: [String: Tree]) throws -> String {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
-        guard let localUserURL else {
-            throw Error.missingLocalEndpoint
-        }
+    private func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [FileRef], previousTreeCache: [String: Tree]) async throws -> String {
 
         // If this directory hasn't changed, reuse previous tree
         if changedSubitems[directory] == nil, let previousTree = previousTreeCache[directory] {
-            return localStorage.hash(for: previousTree)
+            let data = previousTree.encode()
+            let header = store.header(kind: previousTree.kind.rawValue, count: data.count)
+            return store.hashCompute(header+data)
         }
 
         var entries: [Tree.Entry] = []
-        let directoryURL = directory.isEmpty ? localUserURL : localUserURL.appending(path: directory)
+        let directoryURL = directory.isEmpty ? localBaseURL : localBaseURL.appending(path: directory)
 
         let contents = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.isDirectoryKey])
 
@@ -517,7 +361,7 @@ public final class Client {
 
             if isDirectory {
                 // Recursively build or reuse subtree
-                let subTreeHash = try buildTreeRecursively(
+                let subTreeHash = try await buildTreeRecursively(
                     directory: relativePath,
                     changedSubitems: changedSubitems,
                     files: files,
@@ -536,48 +380,42 @@ public final class Client {
         }
 
         let tree = Tree(entries: entries)
-        return try localStorage.store(tree)
+        return try await store.store(tree, privateKey: privateKey)
     }
 
-    private func treeStructure(_ treeHash: String, path: String = "") throws -> [String: Tree] {
-        guard let localStorage else {
-            throw Error.missingLocalStorage
-        }
+    private func treeStructure(_ treeHash: String, path: String = "") async throws -> [String: Tree] {
         guard !treeHash.isEmpty else { return [:] }
 
         var out: [String: Tree] = [:]
-        let tree = try localStorage.retrieve(treeHash, as: Tree.self)
+        let tree = try await store.retrieve(treeHash, as: Tree.self)
         out[path] = tree
 
         for entry in tree.entries where entry.mode == .directory {
             let subPath = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
-            let trees = try treeStructure(entry.hash, path: subPath)
+            let trees = try await treeStructure(entry.hash, path: subPath)
             out.merge(trees) { (_, new) in new }
         }
         return out
     }
 
     private func shouldIgnore(path: String) -> Bool {
-        if configuration.ignore.contains(path) {
+        if ignore.contains(path) {
             return true
         }
         for component in path.split(separator: "/").map(String.init) {
-            if configuration.ignore.contains(component) {
+            if ignore.contains(component) {
                 return true
             }
         }
         return false
     }
 
-    private func log(_ commitHash: String, commit: Commit) throws {
-        guard let localUserRepoDir else {
-            throw Error.missingLocalEndpoint
-        }
+    private func log(_ commitHash: String, commit: Commit) async throws {
         let timestamp = Int(commit.timestamp.timeIntervalSince1970)
         let timezone = timezoneOffset(commit.timestamp)
         let message = "\(commitHash) \(commit.parent ?? EmptyHash) \(commit.author) \(timestamp) \(timezone) commit: \(commit.message)\n"
 
-        if let fileHandle = FileHandle(forUpdatingAtPath: localUserRepoDir.appending(path: "logs").path) {
+        if let fileHandle = FileHandle(forUpdatingAtPath: localBaseURL.appending(path: ".wild").appending(path: "logs").path) {
             defer { try? fileHandle.close() }
             do {
                 try fileHandle.seekToEnd()
@@ -588,11 +426,7 @@ public final class Client {
                 print("Failed to append: \(error)")
             }
         } else {
-            do { // If file doesn't exist, create it with the line
-                try message.write(to: localUserRepoDir.appending(path: "logs"), atomically: true, encoding: .utf8)
-            } catch {
-                print("Failed to create file: \(error)")
-            }
+            try await write(message, path: ".wild/logs")
         }
     }
 

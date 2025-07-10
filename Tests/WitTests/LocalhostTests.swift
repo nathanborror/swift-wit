@@ -4,111 +4,126 @@ import Testing
 @testable import Wit
 
 @Suite("Localhost Tests")
-struct LocalhostTests {
+final class LocalhostTests {
 
     @Test("Push")
     func push() async throws {
-
-        // Configure a client and write our first commit locally.
-        let client = try Client()
-        try await client.register()
-
-        // Write some data to files
-        try client.write("This is some foo", to: "foo.txt")
-        try client.write("This is some bar", to: "bar.txt")
-        let initialCommitHash = try client.commit(
+        try await client.write("This is some foo", path: "foo.txt")
+        try await client.write("This is some bar", path: "bar.txt")
+        let initialCommitHash = try await client.commit(
             message: "Initial commit",
             author: "Test User <test@example.com>"
         )
-        let initialStatus = try client.status(commitHash: initialCommitHash)
+        let initialStatus = try await client.status(commitHash: initialCommitHash)
         #expect(initialStatus.hasChanges == false)
 
         // Push local commit to remote instance.
-        try await client.push()
-
-        // Cleanup.
-        try await client.unregister()
+        try await client.push(remote: remote)
     }
 
     @Test("Fetch")
     func fetch() async throws {
-        let client = try Client()
-        let (userID, privateKey) = try await client.register()
-
-        // First commit
-        try client.write("This is some foo", to: "foo.txt")
-        try client.write("This is some bar", to: "bar.txt")
-        let firstCommitHash = try client.commit(
+        try await client.write("This is some foo", path: "foo.txt")
+        try await client.write("This is some bar", path: "bar.txt")
+        let firstCommitHash = try await client.commit(
             message: "First commit",
             author: "Test User <test@example.com>"
         )
-        try await client.push()
+        try await client.push(remote: remote)
 
         // Second commit
-        try client.write("This is some updated foo", to: "foo.txt")
-        let secondCommitHash = try client.commit(
+        try await client.write("This is some updated foo", path: "foo.txt")
+        let secondCommitHash = try await client.commit(
             message: "Second commit",
             author: "Test User <test@example.com>",
             previousCommitHash: firstCommitHash
         )
-        try await client.push()
+        try await client.push(remote: remote)
 
         // Delete second commit
-        let commitHashURL = client.localStorage!.hashURL(secondCommitHash)
-        try FileManager.default.removeItem(at: commitHashURL)
-        try client.write(firstCommitHash, to: ".wild/HEAD")
+        let dir = String(secondCommitHash.prefix(2))
+        let file = String(secondCommitHash.dropFirst(2))
+        try await client.local.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
+        try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new empty client
-        let newClient = try Client()
-        try await newClient.register(userID: userID, privateKey: privateKey)
-        try await newClient.fetch()
+        let newClient = Client(workingPath: userID, privateKey: privateKey)
+
+        // Fetch remote files
+        try await newClient.fetch(remote: remote)
 
         // HEAD should not have changed with fetch
-        let head = newClient.read(".wild/HEAD")
+        let head = try await newClient.read(".wild/HEAD")
         #expect(head == firstCommitHash)
 
-        let files = try newClient.tracked()
+        let files = try await newClient.tracked()
         #expect(files.count == 2)
     }
 
     @Test("Reset")
     func reset() async throws {
-        let client = try Client()
-        let (userID, privateKey) = try await client.register()
-
-        // First commit
-        try client.write("This is some foo", to: "foo.txt")
-        try client.write("This is some bar", to: "bar.txt")
-        let firstCommitHash = try client.commit(
+        try await client.write("This is some foo", path: "foo.txt")
+        try await client.write("This is some bar", path: "bar.txt")
+        let firstCommitHash = try await client.commit(
             message: "First commit",
             author: "Test User <test@example.com>"
         )
-        try await client.push()
+        try await client.push(remote: remote)
 
         // Second commit
-        try client.write("This is some updated foo", to: "foo.txt")
-        let secondCommitHash = try client.commit(
+        try await client.write("This is some updated foo", path: "foo.txt")
+        let secondCommitHash = try await client.commit(
             message: "Second commit",
             author: "Test User <test@example.com>",
             previousCommitHash: firstCommitHash
         )
-        try await client.push()
+        try await client.push(remote: remote)
 
         // Delete second commit
-        let commitHashURL = client.localStorage!.hashURL(secondCommitHash)
-        try FileManager.default.removeItem(at: commitHashURL)
-        try client.write(firstCommitHash, to: ".wild/HEAD")
+        let dir = String(secondCommitHash.prefix(2))
+        let file = String(secondCommitHash.dropFirst(2))
+        try await client.local.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
+        try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new empty client
-        let newClient = try Client()
-        try await newClient.register(userID: userID, privateKey: privateKey)
-        try await newClient.reset()
+        let newClient = Client(workingPath: userID, privateKey: privateKey)
+        try await newClient.reset(remote: remote)
 
         // HEAD should have changed with rebase
-        let head = newClient.read(".wild/HEAD")
+        let head = try await newClient.read(".wild/HEAD")
         #expect(head == secondCommitHash)
 
-        let files = try newClient.tracked()
+        let files = try await newClient.tracked()
         #expect(files.count == 2)
+    }
+
+    // MARK: Setup and Teardown
+
+    let userID: String
+    let privateKey: Remote.PrivateKey
+    let client: Client
+    let remote: Remote
+
+    init() async throws {
+        self.userID = UUID().uuidString
+        self.privateKey = Remote.PrivateKey()
+        self.client = Client(workingPath: userID, privateKey: privateKey)
+        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(userID)")!)
+
+        let publicKey = privateKey.publicKey.rawRepresentation.base64EncodedString()
+        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
+        let data = """
+            {"id": "\(userID)", "publicKey": "\(publicKey)"}
+            """.data(using: .utf8)
+        try await remote.put(path: "register", data: data!, mimetype: nil, privateKey: nil)
+    }
+
+    deinit { teardown() }
+
+    func teardown() {
+        try? FileManager.default.removeItem(at: .documentsDirectory.appending(path: userID))
+        let privateKey = privateKey
+        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(userID)")!)
+        Task { try await remote.put(path: "unregister", data: Data(), mimetype: nil, privateKey: privateKey) }
     }
 }

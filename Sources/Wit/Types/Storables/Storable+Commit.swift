@@ -1,7 +1,7 @@
 import Foundation
 
 public struct Commit: Storable {
-    public var type = Object.Kind.commit
+    public var kind = Envelope.Kind.commit
     public var tree: String
     public var parent: String?
     public var author: String
@@ -81,8 +81,7 @@ public struct Commit: Storable {
         lines.append(message)
 
         let content = lines.joined(separator: "\n")
-        let data = content.data(using: .utf8) ?? Data()
-        return applyHeader(data)
+        return content.data(using: .utf8) ?? Data()
     }
 
     private let treePrefix = "tree: "

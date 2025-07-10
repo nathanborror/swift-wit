@@ -1,8 +1,8 @@
 import Foundation
 
 public struct Tree: Storable {
-    public let type = Object.Kind.tree
-    public let entries: [Entry]
+    public var kind = Envelope.Kind.tree
+    public var entries: [Entry]
 
     public struct Entry {
         public let mode: Mode
@@ -50,8 +50,7 @@ public struct Tree: Storable {
     public func encode() -> Data {
         let entries = entries.sorted { $0.name < $1.name }
         let content = entries.map { $0.formatted }.joined()
-        let data = content.data(using: .utf8) ?? Data()
-        return applyHeader(data)
+        return content.data(using: .utf8) ?? Data()
     }
 }
 

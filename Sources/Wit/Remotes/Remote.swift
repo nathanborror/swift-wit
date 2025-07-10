@@ -1,16 +1,14 @@
 import Foundation
 import CryptoKit
 
-public typealias PrivateKey = Curve25519.Signing.PrivateKey
-
 public protocol Remote {
-    func register(userID: String, privateKey: PrivateKey) async throws
-    func register() async throws -> (String, PrivateKey)
-    func unregister() async throws
+    typealias PrivateKey = Curve25519.Signing.PrivateKey
 
+    func exists(path: String) async throws -> Bool
     func get(path: String) async throws -> Data
-    func put(path: String, data: Data, mimetype: String?) async throws
-    func delete(path: String) async throws
+    func put(path: String, data: Data, mimetype: String?, privateKey: PrivateKey?) async throws
+    func delete(path: String, privateKey: PrivateKey?) async throws
+    func list(path: String) async throws -> [String: URL]
 }
 
 public enum RemoteError: Swift.Error, CustomStringConvertible {
@@ -18,7 +16,6 @@ public enum RemoteError: Swift.Error, CustomStringConvertible {
     case missingURLMethod
     case missingURLPath
     case missingPrivateKey
-    case missingUserID
     case badServerResponse
     case badServerURL
     case requestFailed(Int, String?)
@@ -33,8 +30,6 @@ public enum RemoteError: Swift.Error, CustomStringConvertible {
             "Missing URL path"
         case .missingPrivateKey:
             "Missing private key"
-        case .missingUserID:
-            "Missing user id"
         case .badServerResponse:
             "The server returned an invalid response."
         case .badServerURL:
