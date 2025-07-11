@@ -3,8 +3,8 @@ import CryptoKit
 import Testing
 @testable import Wit
 
-@Suite("Localhost Tests")
-final class LocalhostTests {
+@Suite("Remote Tests")
+final class RemoteTests {
 
     @Test("Push")
     func push() async throws {
