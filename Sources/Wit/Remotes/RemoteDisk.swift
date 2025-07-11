@@ -12,28 +12,28 @@ public actor RemoteDisk: Remote {
     }
 
     public func exists(path: String) async throws -> Bool {
-        let url = baseURL.appending(path: path)
+        let url = baseURL/path
         return FileManager.default.fileExists(atPath: url.path)
     }
 
     public func get(path: String) async throws -> Data {
-        let url = baseURL.appending(path: path)
+        let url = baseURL/path
         return try Data(contentsOf: url)
     }
 
     public func put(path: String, data: Data, mimetype: String?, privateKey: PrivateKey?) async throws {
-        let url = baseURL.appending(path: path)
-        try FileManager.default.createDirectoryIfNeeded(url)
+        let url = baseURL/path
+        try FileManager.default.mkdir(url)
         try data.write(to: url, options: .atomic)
     }
 
     public func delete(path: String, privateKey: PrivateKey?) async throws {
-        let url = baseURL.appending(path: path)
+        let url = baseURL/path
         try? FileManager.default.removeItem(at: url)
     }
 
     public func list(path: String) async throws -> [String: URL] {
-        let url = baseURL.appending(path: path)
+        let url = baseURL/path
         return try await Task.detached(priority: .userInitiated) {
             var out: [String: URL] = [:]
             guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {

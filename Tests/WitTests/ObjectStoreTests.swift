@@ -10,9 +10,9 @@ final class ObjectStoreTests {
     var storage: ObjectStore
 
     init() async throws {
-        self.baseURL = .documentsDirectory.appending(path: UUID().uuidString)
+        self.baseURL = .documentsDirectory/UUID().uuidString
         self.remote = RemoteDisk(baseURL: baseURL)
-        self.storage = ObjectStore(remote: remote)
+        self.storage = ObjectStore(remote: remote, objectsPath: ".wild/objects")
     }
 
     deinit {
@@ -122,9 +122,9 @@ final class ObjectStoreTests {
     func hashing() async throws {
         let content = "Hello, World!"
         let blob = Blob(string: content)
-        let url = baseURL.appending(path: "test.txt")
+        let url = baseURL/"test.txt"
 
-        try FileManager.default.createDirectoryIfNeeded(url)
+        try FileManager.default.mkdir(url)
         try content.write(to: url, atomically: true, encoding: .utf8)
 
         let blobHeader = storage.header(kind: "blob", count: blob.content.count)

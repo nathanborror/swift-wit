@@ -2,17 +2,30 @@ import Foundation
 
 extension FileManager {
 
-    func createDirectoryIfNeeded(_ url: URL) throws {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            let directoryURL = url.hasDirectoryPath ? url : url.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        }
+    func mkdir(_ url: URL) throws {
+        guard !fileExists(atPath: url.path) else { return }
+        let directoryURL = url.hasDirectoryPath ? url : url.deletingLastPathComponent()
+        try createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
-    func createFileIfNeeded(_ url: URL) throws {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try createDirectoryIfNeeded(url)
-            try "".write(to: url, atomically: true, encoding: .utf8)
-        }
+    func touch(_ url: URL) throws {
+        guard !fileExists(atPath: url.path) else { return }
+        try mkdir(url)
+        createFile(atPath: url.path, contents: nil)
     }
+}
+
+extension String {
+
+    func trimmingSlashes() -> String {
+        trimmingCharacters(in: .init(charactersIn: "/"))
+    }
+}
+
+// MARK: - Operators
+
+infix operator /: MultiplicationPrecedence
+
+func / (lhs: URL, rhs: String) -> URL {
+    lhs.appending(path: rhs)
 }

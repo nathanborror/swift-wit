@@ -14,7 +14,7 @@ final class ClientTests {
     }
 
     deinit {
-        try? FileManager.default.removeItem(at: .documentsDirectory.appending(path: workingPath))
+        try? FileManager.default.removeItem(at: .documentsDirectory/workingPath)
     }
 
     @Test("Show status of working directory")
@@ -74,7 +74,7 @@ final class ClientTests {
         #expect(initialCommitHash.isEmpty == false)
         #expect(try await client.store.exists(initialCommitHash) == true)
 
-        let head = try await client.read(".wild/HEAD")
+        let head = try await client.read(".wild/refs/heads/main")
         #expect(head == initialCommitHash)
 
         let initialCommit = try await client.store.retrieve(initialCommitHash, as: Commit.self)

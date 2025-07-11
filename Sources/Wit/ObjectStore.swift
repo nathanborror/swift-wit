@@ -8,7 +8,7 @@ private let logger = Logger(subsystem: "ObjectStore", category: "Wit")
 public final class ObjectStore {
     public let remote: Remote
 
-    private let objectDir = ".wild/objects"
+    private let objectsPath: String
     private let compressionThreshold: Int
     private let useCompression: Bool
 
@@ -16,8 +16,9 @@ public final class ObjectStore {
         case invalidObjectFormat
     }
 
-    public init(remote: Remote, compressionThreshold: Int = 1024, useCompression: Bool = true) {
+    public init(remote: Remote, objectsPath: String, compressionThreshold: Int = 1024, useCompression: Bool = true) {
         self.remote = remote
+        self.objectsPath = objectsPath.trimmingSlashes()
         self.compressionThreshold = compressionThreshold
         self.useCompression = useCompression
     }
@@ -144,7 +145,7 @@ public final class ObjectStore {
     func hashPath(_ hash: String) -> String {
         let dir = String(hash.prefix(2))
         let file = String(hash.dropFirst(2))
-        return "\(objectDir)/\(dir)/\(file)"
+        return "\(objectsPath)/\(dir)/\(file)"
     }
 
     func hashCompute(_ data: Data) -> String {

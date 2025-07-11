@@ -27,9 +27,26 @@ public final class Client {
         self.workingPath = workingPath
         self.privateKey = privateKey
 
-        self.localBaseURL = .documentsDirectory.appending(path: workingPath)
+        self.localBaseURL = .documentsDirectory / workingPath
         self.local = RemoteDisk(baseURL: localBaseURL)
-        self.store = ObjectStore(remote: local)
+        self.store = ObjectStore(remote: local, objectsPath: ".wild/objects")
+
+        try! initialize()
+    }
+
+
+    public func initialize() throws {
+        let manager = FileManager.default
+        let url = localBaseURL
+
+        try manager.touch(url/".wild"/"config")
+        try manager.touch(url/".wild"/"manifest")
+        try manager.touch(url/".wild"/"logs"/"heads"/"main")
+        try manager.touch(url/".wild"/"refs"/"heads"/"main")
+
+        try manager.mkdir(url/".wild"/"objects")
+        try manager.mkdir(url/".wild"/"logs"/"remotes")
+        try manager.mkdir(url/".wild"/"refs"/"remotes")
     }
 
     public func read(_ path: String) async throws -> String? {
@@ -54,7 +71,7 @@ public final class Client {
     /// This method determines which files have been modified, added, or deleted relative to the provided commit hash. If no commit hash is specified, it
     /// compares to the current HEAD. The returned `Status` object lists the paths of changed files categorized by their change type.
     public func status(commitHash: String? = nil) async throws -> Status {
-        let head = try await read(".wild/HEAD")
+        let head = try await read(".wild/refs/heads/main")
         let commitHash = commitHash ?? head ?? ""
         let commit = try await store.retrieve(commitHash, as: Commit.self)
         let changed = try await treeFilesChanged(commit.tree)
@@ -69,7 +86,6 @@ public final class Client {
     ///
     /// This method identifies all files that have been added, modified, or deleted since the previous commit. It then writes a new tree and commit object to the
     /// object store. The HEAD and manifest are updated to reflect the new commit.
-    @discardableResult
     public func commit(message: String, author: String, timestamp: Date = .now, previousCommitHash: String? = nil) async throws -> String {
 
         // Previous commit, if it exists
@@ -111,7 +127,7 @@ public final class Client {
         let commitHash = try await store.store(commit, privateKey: privateKey)
 
         // Update HEAD
-        try await write(commitHash, path: ".wild/HEAD")
+        try await write(commitHash, path: ".wild/refs/heads/main")
 
         // Update Manifest
         let manifest = try await buildManifest(commitHash)
@@ -127,7 +143,7 @@ public final class Client {
     /// For the specified commit hash (or HEAD if none provided), this returns a sorted array of `FileRef` objects representing all files stored in the
     /// commit's tree.
     public func tracked(commitHash: String? = nil) async throws -> [FileRef] {
-        let head = try? await local.get(path: ".wild/HEAD")
+        let head = try? await local.get(path: ".wild/refs/heads/main")
         let commitHash = commitHash ?? String(data: head ?? Data(), encoding: .utf8) ?? ""
         if commitHash.isEmpty {
             return []
@@ -139,12 +155,19 @@ public final class Client {
     }
 
     public func fetch(remote: Remote) async throws {
-        let remoteHeadData = try await remote.get(path: ".wild/HEAD")
+        // Download remote head
+        let remoteHeadData = try await remote.get(path: ".wild/refs/heads/main")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-        let localHead = try await read(".wild/HEAD")
+        try await write(remoteHeadData, path: ".wild/refs/remotes/origin/main")
+
+        // Local head
+        let localHead = try await read(".wild/refs/heads/main")
+
+        // Compare heads
         guard let remoteHead, localHead != remoteHead else { return }
 
-        let remoteStore = ObjectStore(remote: remote)
+        // Download remote objects
+        let remoteStore = ObjectStore(remote: remote, objectsPath: ".wild/objects")
         let remoteHashes = try await reachableHashes(from: remoteHead, using: remoteStore)
         for hash in remoteHashes {
             guard try await !store.exists(hash) else {
@@ -155,14 +178,19 @@ public final class Client {
             let data = try await remote.get(path: path)
             try await write(data, path: path)
         }
+
+        // Download remote logs
+        if let remoteLogData = try? await remote.get(path: ".wild/logs/heads/main") {
+            try await write(remoteLogData, path: ".wild/logs/remotes/origin/main")
+        }
     }
 
     public func reset(remote: Remote) async throws {
 
         // Check if local HEAD is different from remote HEAD
-        let remoteHeadData = try await remote.get(path: ".wild/HEAD")
+        let remoteHeadData = try await remote.get(path: ".wild/refs/heads/main")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-        let localHead = try  await read(".wild/HEAD")
+        let localHead = try  await read(".wild/refs/heads/main")
         guard let remoteHead, localHead != remoteHead else { return }
 
         // Fetch objects and update local HEAD to remote HEAD
@@ -173,11 +201,11 @@ public final class Client {
         // Update local logs and manfest to reflect a changed local HEAD.
 
         // Set local HEAD to remote
-        try await write(remoteHead, path: ".wild/HEAD")
+        try await write(remoteHead, path: ".wild/refs/heads/main")
     }
 
     public func push(remote: Remote) async throws {
-        guard let head = try await read(".wild/HEAD"), !head.isEmpty else {
+        guard let head = try await read(".wild/refs/heads/main"), !head.isEmpty else {
             print("Nothing to push: local HEAD not set")
             return
         }
@@ -185,8 +213,8 @@ public final class Client {
         // Get remote HEAD and all reachable hashes from local storage, compare with reachable hashes from remote
         // storage and determine what needs to be pushed.
 
-        let remoteStore = ObjectStore(remote: remote)
-        let remoteHeadData = try? await remote.get(path: ".wild/HEAD")
+        let remoteStore = ObjectStore(remote: remote, objectsPath: ".wild/objects")
+        let remoteHeadData = try? await remote.get(path: ".wild/refs/heads/main")
         let remoteHead = String(data: remoteHeadData ?? Data(), encoding: .utf8) ?? ""
 
         let remoteReachable = (!remoteHead.isEmpty) ? try await reachableHashes(from: remoteHead, using: remoteStore) : []
@@ -204,14 +232,14 @@ public final class Client {
         }
 
         // Update remote HEAD
-        _ = try await remote.put(path: ".wild/HEAD", data: head.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+        _ = try await remote.put(path: ".wild/refs/heads/main", data: head.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
 
         // Update remote manifest
-        // let remoteManifestURL = remoteDirURL.appending(path: "manifest")
+        // let remoteManifestURL = remoteDirURL/"manifest"
         print("update remote manifest not implemented")
 
         // Append log line(s)
-        // let remoteLogsURL = remoteDirURL.appending(path: "logs")
+        // let remoteLogsURL = remoteDirURL/"logs"
         print("update remote logs not implemented")
 
         // Finished
@@ -348,7 +376,7 @@ public final class Client {
         }
 
         var entries: [Tree.Entry] = []
-        let directoryURL = directory.isEmpty ? localBaseURL : localBaseURL.appending(path: directory)
+        let directoryURL = directory.isEmpty ? localBaseURL : (localBaseURL/directory)
 
         let contents = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.isDirectoryKey])
 
@@ -415,7 +443,7 @@ public final class Client {
         let timezone = timezoneOffset(commit.timestamp)
         let message = "\(commitHash) \(commit.parent ?? EmptyHash) \(commit.author) \(timestamp) \(timezone) commit: \(commit.message)\n"
 
-        if let fileHandle = FileHandle(forUpdatingAtPath: localBaseURL.appending(path: ".wild").appending(path: "logs").path) {
+        if let fileHandle = FileHandle(forUpdatingAtPath: (localBaseURL/".wild"/"logs").path) {
             defer { try? fileHandle.close() }
             do {
                 try fileHandle.seekToEnd()
@@ -426,7 +454,7 @@ public final class Client {
                 print("Failed to append: \(error)")
             }
         } else {
-            try await write(message, path: ".wild/logs")
+            try await write(message, path: ".wild/logs/heads/main")
         }
     }
 

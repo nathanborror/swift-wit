@@ -44,16 +44,16 @@ final class LocalhostTests {
         let dir = String(secondCommitHash.prefix(2))
         let file = String(secondCommitHash.dropFirst(2))
         try await client.local.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
-        try await client.write(firstCommitHash, path: ".wild/HEAD")
+        try await client.write(firstCommitHash, path: ".wild/refs/heads/main")
 
         // Establish new empty client
-        let newClient = Client(workingPath: userID, privateKey: privateKey)
+        let newClient = Client(workingPath: workingPath, privateKey: privateKey)
 
         // Fetch remote files
         try await newClient.fetch(remote: remote)
 
         // HEAD should not have changed with fetch
-        let head = try await newClient.read(".wild/HEAD")
+        let head = try await newClient.read(".wild/refs/heads/main")
         #expect(head == firstCommitHash)
 
         let files = try await newClient.tracked()
@@ -83,14 +83,14 @@ final class LocalhostTests {
         let dir = String(secondCommitHash.prefix(2))
         let file = String(secondCommitHash.dropFirst(2))
         try await client.local.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
-        try await client.write(firstCommitHash, path: ".wild/HEAD")
+        try await client.write(firstCommitHash, path: ".wild/refs/heads/main")
 
         // Establish new empty client
-        let newClient = Client(workingPath: userID, privateKey: privateKey)
+        let newClient = Client(workingPath: workingPath, privateKey: privateKey)
         try await newClient.reset(remote: remote)
 
         // HEAD should have changed with rebase
-        let head = try await newClient.read(".wild/HEAD")
+        let head = try await newClient.read(".wild/refs/heads/main")
         #expect(head == secondCommitHash)
 
         let files = try await newClient.tracked()
@@ -99,21 +99,21 @@ final class LocalhostTests {
 
     // MARK: Setup and Teardown
 
-    let userID: String
+    let workingPath: String
     let privateKey: Remote.PrivateKey
     let client: Client
     let remote: Remote
 
     init() async throws {
-        self.userID = UUID().uuidString
+        self.workingPath = UUID().uuidString
         self.privateKey = Remote.PrivateKey()
-        self.client = Client(workingPath: userID, privateKey: privateKey)
-        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(userID)")!)
+        self.client = Client(workingPath: workingPath, privateKey: privateKey)
+        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
 
         let publicKey = privateKey.publicKey.rawRepresentation.base64EncodedString()
         let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
         let data = """
-            {"id": "\(userID)", "publicKey": "\(publicKey)"}
+            {"id": "\(workingPath)", "publicKey": "\(publicKey)"}
             """.data(using: .utf8)
         try await remote.put(path: "register", data: data!, mimetype: nil, privateKey: nil)
     }
@@ -121,9 +121,9 @@ final class LocalhostTests {
     deinit { teardown() }
 
     func teardown() {
-        try? FileManager.default.removeItem(at: .documentsDirectory.appending(path: userID))
+        try? FileManager.default.removeItem(at: .documentsDirectory/workingPath)
         let privateKey = privateKey
-        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(userID)")!)
+        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
         Task { try await remote.put(path: "unregister", data: Data(), mimetype: nil, privateKey: privateKey) }
     }
 }

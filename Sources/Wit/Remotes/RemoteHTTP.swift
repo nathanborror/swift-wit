@@ -20,7 +20,7 @@ public actor RemoteHTTP: Remote {
     }
 
     public func exists(path: String) async throws -> Bool {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var request = URLRequest(url: baseURL/path)
         request.httpMethod = "HEAD"
 
         let (data, response) = try await session.data(for: request)
@@ -42,7 +42,7 @@ public actor RemoteHTTP: Remote {
     }
 
     public func get(path: String) async throws -> Data {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var request = URLRequest(url: baseURL/path)
         request.httpMethod = "GET"
 
         let (data, response) = try await session.data(for: request)
@@ -61,7 +61,7 @@ public actor RemoteHTTP: Remote {
     }
 
     public func put(path: String, data: Data, mimetype: String?, privateKey: PrivateKey?) async throws {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var request = URLRequest(url: baseURL/path)
         request.httpMethod = "PUT"
         if let mimetype {
             request.setValue(mimetype, forHTTPHeaderField: "Content-Type")
@@ -86,7 +86,7 @@ public actor RemoteHTTP: Remote {
     }
 
     public func delete(path: String, privateKey: PrivateKey?) async throws {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var request = URLRequest(url: baseURL/path)
         request.httpMethod = "DELETE"
         if let privateKey {
             request = try sign(request: request, privateKey: privateKey)
