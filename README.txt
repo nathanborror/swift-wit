@@ -13,9 +13,10 @@ Tasks:
 - [x] Test workflow for fine-grained tree changes
 - [x] Create a manifest and store it in .wit/manifest (untracked)
 - [x] Object store needs custom url so it can store files globally to save space
-- [ ] Create a user config file and store it in .wit/user (untracked)
+- [ ] Create a user config file and store it in .wild/user (untracked)
 - [ ] Add rebase to check for changes and conflicts that could be on the server
 - [ ] Add push to send changes to server, objects before updating head
+- [ ] Cache log information about remotes locally
 
 Example config file:
 
@@ -33,3 +34,24 @@ Example config file:
             "publicKey": "<PUBLIC_KEY>"
         }
     }
+
+Directory structure:
+
+~/
+└─ <WORKING_DIR>/
+  └─ .wild/
+    ├─ config
+    ├─ refs/
+    ├─ objects/
+    └─ logs/
+      └─ heads/
+        └─ main
+      └─ remotes/
+        └─ origin/
+          └─ main
+    ├─ manifest
+    └─ HEAD
+  ├─ foo.txt
+  ├─ bar.txt
+  └─ directory/
+
