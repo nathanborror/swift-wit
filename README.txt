@@ -1,3 +1,4 @@
+
 ██     ██
 ██     ██ ██   ██
 ██  █  ██    ██████
@@ -5,6 +6,34 @@
  ███ ███  ██   ██
 
 The Wild Information Tracker (Wit) is a content addressable storage tool for managing files within a Wild instance. It's inspired by Linus Torvalds' Git.
+
+Config file:
+
+    [core]
+        version = 1.0
+    [user]
+        id = USER_ID
+        name = Nathan Borror
+        email = nathan@example.com
+        username = nathan
+    [remote "origin"]
+        url = http://localhost:8080/USER_ID
+
+Directory structure:
+
+    ~/
+    └ <WORKING_DIR>/
+      └ .wild/
+        ├ config
+        ├ HEAD
+        ├ logs
+        ├ manifest
+        ├ objects/
+        └ remotes/
+          └ origin/
+            ├ HEAD
+            ├ logs
+            └ manifest
 
 Tasks:
 
@@ -17,41 +46,3 @@ Tasks:
 - [ ] Add rebase to check for changes and conflicts that could be on the server
 - [ ] Add push to send changes to server, objects before updating head
 - [ ] Cache log information about remotes locally
-
-Example config file:
-
-    {
-        "version": 1.0,
-        "remotes": [
-            {
-                "name": "origin",
-                "url": "http://localhost:8080"
-            }
-        ],
-        "user": {
-            "id": "<USER_ID>",
-            "name": "Nathan Borror",
-            "publicKey": "<PUBLIC_KEY>"
-        }
-    }
-
-Directory structure:
-
-~/
-└─ <WORKING_DIR>/
-  └─ .wild/
-    ├─ config
-    ├─ refs/
-    ├─ objects/
-    └─ logs/
-      └─ heads/
-        └─ main
-      └─ remotes/
-        └─ origin/
-          └─ main
-    ├─ manifest
-    └─ HEAD
-  ├─ foo.txt
-  ├─ bar.txt
-  └─ directory/
-
