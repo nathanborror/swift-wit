@@ -12,7 +12,7 @@ public final class Client {
 
     let localBaseURL: URL
     let local: Remote
-    let store: ObjectStore
+    let store: Objects
 
     public enum Error: Swift.Error {
         case missingUserID
@@ -29,7 +29,7 @@ public final class Client {
 
         self.localBaseURL = .documentsDirectory / workingPath
         self.local = RemoteDisk(baseURL: localBaseURL)
-        self.store = ObjectStore(remote: local, objectsPath: ".wild/objects")
+        self.store = Objects(remote: local, objectsPath: ".wild/objects")
 
         try! initialize()
     }
@@ -142,7 +142,7 @@ public final class Client {
     ///
     /// For the specified commit hash (or HEAD if none provided), this returns a sorted array of `FileRef` objects representing all files stored in the
     /// commit's tree.
-    public func tracked(commitHash: String? = nil) async throws -> [FileRef] {
+    public func tracked(commitHash: String? = nil) async throws -> [Reference] {
         let head = try? await local.get(path: ".wild/refs/heads/main")
         let commitHash = commitHash ?? String(data: head ?? Data(), encoding: .utf8) ?? ""
         if commitHash.isEmpty {
@@ -167,7 +167,7 @@ public final class Client {
         guard let remoteHead, localHead != remoteHead else { return }
 
         // Download remote objects
-        let remoteStore = ObjectStore(remote: remote, objectsPath: ".wild/objects")
+        let remoteStore = Objects(remote: remote, objectsPath: ".wild/objects")
         let remoteHashes = try await reachableHashes(from: remoteHead, using: remoteStore)
         for hash in remoteHashes {
             guard try await !store.exists(hash) else {
@@ -213,7 +213,7 @@ public final class Client {
         // Get remote HEAD and all reachable hashes from local storage, compare with reachable hashes from remote
         // storage and determine what needs to be pushed.
 
-        let remoteStore = ObjectStore(remote: remote, objectsPath: ".wild/objects")
+        let remoteStore = Objects(remote: remote, objectsPath: ".wild/objects")
         let remoteHeadData = try? await remote.get(path: ".wild/refs/heads/main")
         let remoteHead = String(data: remoteHeadData ?? Data(), encoding: .utf8) ?? ""
 
@@ -248,7 +248,7 @@ public final class Client {
 
     // MARK: Private
 
-    private func reachableHashes(from rootHash: String, using objectStore: ObjectStore) async throws -> Set<String> {
+    private func reachableHashes(from rootHash: String, using objectStore: Objects) async throws -> Set<String> {
         var seen = Set<String>()
         var stack: [String] = [rootHash]
 
@@ -279,8 +279,8 @@ public final class Client {
             .joined(separator: "\n")
     }
 
-    private func treeFilesChanged(_ treeHash: String?) async throws -> [FileRef] {
-        var changes: [FileRef] = []
+    private func treeFilesChanged(_ treeHash: String?) async throws -> [Reference] {
+        var changes: [Reference] = []
 
         // Build a map of previous file states
         let previousFiles = try await treeFiles(treeHash)
@@ -306,8 +306,8 @@ public final class Client {
         return changes
     }
 
-    private func treeFiles(_ treeHash: String?, path: String = "") async throws -> [String: FileRef] {
-        var out: [String: FileRef] = [:]
+    private func treeFiles(_ treeHash: String?, path: String = "") async throws -> [String: Reference] {
+        var out: [String: Reference] = [:]
         guard let treeHash else { return out }
         let tree = try await store.retrieve(treeHash, as: Tree.self)
         for entry in tree.entries {
@@ -322,9 +322,9 @@ public final class Client {
         return out
     }
 
-    private func files(within path: String) async throws -> [String: FileRef] {
+    private func files(within path: String) async throws -> [String: Reference] {
         let files = try await local.list(path: path)
-        var out: [String: FileRef] = [:]
+        var out: [String: Reference] = [:]
         for (relativePath, url) in files {
             guard !shouldIgnore(path: relativePath) else { continue }
             if let hash = try? store.hash(for: url) {
@@ -335,7 +335,7 @@ public final class Client {
     }
 
     // TODO: Review — was generated
-    private func updateTreesForChangedPaths(files: [FileRef], previousTreeHash: String) async throws -> String {
+    private func updateTreesForChangedPaths(files: [Reference], previousTreeHash: String) async throws -> String {
         var changesByDirectory: [String: Set<String>] = [:]
 
         for file in files {
@@ -366,7 +366,7 @@ public final class Client {
     }
 
     // TODO: Review — was generated
-    private func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [FileRef], previousTreeCache: [String: Tree]) async throws -> String {
+    private func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [Reference], previousTreeCache: [String: Tree]) async throws -> String {
 
         // If this directory hasn't changed, reuse previous tree
         if changedSubitems[directory] == nil, let previousTree = previousTreeCache[directory] {

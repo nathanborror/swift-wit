@@ -5,7 +5,7 @@ import CryptoKit
 
 private let logger = Logger(subsystem: "ObjectStore", category: "Wit")
 
-public final class ObjectStore {
+public final class Objects {
     public let remote: Remote
 
     private let objectsPath: String

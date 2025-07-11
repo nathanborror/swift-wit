@@ -2,17 +2,17 @@ import Foundation
 import Testing
 @testable import Wit
 
-@Suite("Object Store Tests")
-final class ObjectStoreTests {
+@Suite("Objects Tests")
+final class ObjectsTests {
 
     var baseURL: URL
     var remote: Remote
-    var storage: ObjectStore
+    var storage: Objects
 
     init() async throws {
         self.baseURL = .documentsDirectory/UUID().uuidString
         self.remote = RemoteDisk(baseURL: baseURL)
-        self.storage = ObjectStore(remote: remote, objectsPath: ".wild/objects")
+        self.storage = Objects(remote: remote, objectsPath: ".wild/objects")
     }
 
     deinit {
