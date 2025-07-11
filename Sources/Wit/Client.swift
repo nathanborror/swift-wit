@@ -40,13 +40,12 @@ public final class Client {
         let url = localBaseURL
 
         try manager.touch(url/".wild"/"config")
+        try manager.touch(url/".wild"/"HEAD")
+        try manager.touch(url/".wild"/"logs")
         try manager.touch(url/".wild"/"manifest")
-        try manager.touch(url/".wild"/"logs"/"heads"/"main")
-        try manager.touch(url/".wild"/"refs"/"heads"/"main")
 
         try manager.mkdir(url/".wild"/"objects")
-        try manager.mkdir(url/".wild"/"logs"/"remotes")
-        try manager.mkdir(url/".wild"/"refs"/"remotes")
+        try manager.mkdir(url/".wild"/"remotes"/"origin")
     }
 
     public func read(_ path: String) async throws -> String? {
@@ -71,7 +70,7 @@ public final class Client {
     /// This method determines which files have been modified, added, or deleted relative to the provided commit hash. If no commit hash is specified, it
     /// compares to the current HEAD. The returned `Status` object lists the paths of changed files categorized by their change type.
     public func status(commitHash: String? = nil) async throws -> Status {
-        let head = try await read(".wild/refs/heads/main")
+        let head = try await read(".wild/HEAD")
         let commitHash = commitHash ?? head ?? ""
         let commit = try await store.retrieve(commitHash, as: Commit.self)
         let changed = try await treeFilesChanged(commit.tree)
@@ -127,7 +126,7 @@ public final class Client {
         let commitHash = try await store.store(commit, privateKey: privateKey)
 
         // Update HEAD
-        try await write(commitHash, path: ".wild/refs/heads/main")
+        try await write(commitHash, path: ".wild/HEAD")
 
         // Update Manifest
         let manifest = try await buildManifest(commitHash)
@@ -143,7 +142,7 @@ public final class Client {
     /// For the specified commit hash (or HEAD if none provided), this returns a sorted array of `FileRef` objects representing all files stored in the
     /// commit's tree.
     public func tracked(commitHash: String? = nil) async throws -> [Reference] {
-        let head = try? await local.get(path: ".wild/refs/heads/main")
+        let head = try? await local.get(path: ".wild/HEAD")
         let commitHash = commitHash ?? String(data: head ?? Data(), encoding: .utf8) ?? ""
         if commitHash.isEmpty {
             return []
@@ -156,12 +155,12 @@ public final class Client {
 
     public func fetch(remote: Remote) async throws {
         // Download remote head
-        let remoteHeadData = try await remote.get(path: ".wild/refs/heads/main")
+        let remoteHeadData = try await remote.get(path: ".wild/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-        try await write(remoteHeadData, path: ".wild/refs/remotes/origin/main")
+        try await write(remoteHeadData, path: ".wild/remotes/origin/HEAD")
 
         // Local head
-        let localHead = try await read(".wild/refs/heads/main")
+        let localHead = try await read(".wild/HEAD")
 
         // Compare heads
         guard let remoteHead, localHead != remoteHead else { return }
@@ -180,17 +179,85 @@ public final class Client {
         }
 
         // Download remote logs
-        if let remoteLogData = try? await remote.get(path: ".wild/logs/heads/main") {
-            try await write(remoteLogData, path: ".wild/logs/remotes/origin/main")
+        if let remoteLogs = try? await remote.get(path: ".wild/logs") {
+            try await write(remoteLogs, path: ".wild/remotes/origin/logs")
         }
+
+        // Download remote manifest
+        if let remoteManifest = try? await remote.get(path: ".wild/manifest") {
+            try await write(remoteManifest, path: ".wild/remotes/origin/manifest")
+        }
+    }
+
+    // TODO: Review generated code
+    public func rebase(remote: Remote) async throws {
+        try await fetch(remote: remote)
+
+        let localHead = try await read(".wild/HEAD")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteHead = try await read(".wild/remotes/origin/HEAD")?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let localHead, let remoteHead, !localHead.isEmpty, !remoteHead.isEmpty else {
+            print("Either local HEAD or remote HEAD is missing")
+            return
+        }
+        if localHead == remoteHead {
+            print("Nothing to rebase; already up-to-date")
+            return
+        }
+
+        // 3. Find common ancestor
+        let ancestor = try await findCommonAncestor(localHead: localHead, remoteHead: remoteHead)
+        guard let base = ancestor else {
+            print("No common ancestor found; refusing to rebase")
+            throw Error.missingUserID // choose a better error type!
+        }
+
+        // 4. Collect local-only commits (from localHead back to base, reversed)
+        let localChain = try await ancestryPath(from: localHead, stopBefore: base)
+        if localChain.isEmpty {
+            print("Nothing to rebase; local has no unique commits")
+            return
+        }
+
+        // 5. Replay (recommit) on top of remoteHead
+        var newParent = remoteHead
+        var newCommits: [String] = []
+        for hash in localChain.reversed() {
+            let commit = try await store.retrieve(hash, as: Commit.self)
+            // Commit may refer to an old tree; instead, you might want to re-stage files for each commit, or at minimum use their tree as-is.
+            // If you want to re-apply diffs/patches (true rebase), that's more complex; for now we copy as if the tree is the working tree.
+            let rebasedCommit = Commit(
+                tree: commit.tree,
+                parent: newParent,
+                author: commit.author,
+                message: commit.message,
+                timestamp: commit.timestamp
+            )
+            let newHash = try await store.store(rebasedCommit, privateKey: privateKey)
+            newParent = newHash
+            newCommits.append(newHash)
+        }
+        guard let finalHead = newCommits.last else { return }
+
+        // 6. Update local HEAD & manifest & logs
+        try await write(finalHead, path: ".wild/HEAD")
+        let manifest = try await buildManifest(finalHead)
+        try await write(manifest, path: ".wild/manifest")
+        // Optionally log each new commit
+        for newHash in newCommits {
+            let commit = try await store.retrieve(newHash, as: Commit.self)
+            try await log(newHash, commit: commit)
+        }
+
+        print("Rebased \(localChain.count) commits on top of remote, new HEAD: \(finalHead)")
     }
 
     public func reset(remote: Remote) async throws {
 
         // Check if local HEAD is different from remote HEAD
-        let remoteHeadData = try await remote.get(path: ".wild/refs/heads/main")
+        let remoteHeadData = try await remote.get(path: ".wild/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
-        let localHead = try  await read(".wild/refs/heads/main")
+        let localHead = try  await read(".wild/HEAD")
         guard let remoteHead, localHead != remoteHead else { return }
 
         // Fetch objects and update local HEAD to remote HEAD
@@ -201,11 +268,11 @@ public final class Client {
         // Update local logs and manfest to reflect a changed local HEAD.
 
         // Set local HEAD to remote
-        try await write(remoteHead, path: ".wild/refs/heads/main")
+        try await write(remoteHead, path: ".wild/HEAD")
     }
 
     public func push(remote: Remote) async throws {
-        guard let head = try await read(".wild/refs/heads/main"), !head.isEmpty else {
+        guard let head = try await read(".wild/HEAD"), !head.isEmpty else {
             print("Nothing to push: local HEAD not set")
             return
         }
@@ -214,7 +281,7 @@ public final class Client {
         // storage and determine what needs to be pushed.
 
         let remoteStore = Objects(remote: remote, objectsPath: ".wild/objects")
-        let remoteHeadData = try? await remote.get(path: ".wild/refs/heads/main")
+        let remoteHeadData = try? await remote.get(path: ".wild/HEAD")
         let remoteHead = String(data: remoteHeadData ?? Data(), encoding: .utf8) ?? ""
 
         let remoteReachable = (!remoteHead.isEmpty) ? try await reachableHashes(from: remoteHead, using: remoteStore) : []
@@ -232,7 +299,7 @@ public final class Client {
         }
 
         // Update remote HEAD
-        _ = try await remote.put(path: ".wild/refs/heads/main", data: head.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+        _ = try await remote.put(path: ".wild/HEAD", data: head.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
 
         // Update remote manifest
         // let remoteManifestURL = remoteDirURL/"manifest"
@@ -247,6 +314,41 @@ public final class Client {
     }
 
     // MARK: Private
+
+    // TODO: Review generated code
+    private func findCommonAncestor(localHead: String, remoteHead: String) async throws -> String? {
+        // Collect all ancestors of remote
+        var remoteAncestors = Set<String>()
+        var stack: [String] = [remoteHead]
+        while let hash = stack.popLast() {
+            if hash.isEmpty || remoteAncestors.contains(hash) { continue }
+            remoteAncestors.insert(hash)
+            let commit = try? await store.retrieve(hash, as: Commit.self)
+            if let parent = commit?.parent { stack.append(parent) }
+        }
+        // Walk local chain, return first common commit
+        var current = localHead
+        while !current.isEmpty {
+            if remoteAncestors.contains(current) { return current }
+            let commit = try? await store.retrieve(current, as: Commit.self)
+            guard let parent = commit?.parent else { break }
+            current = parent
+        }
+        return nil
+    }
+
+    // TODO: Review generated code
+    private func ancestryPath(from head: String, stopBefore base: String) async throws -> [String] {
+        var out: [String] = []
+        var curr = head
+        while !curr.isEmpty && curr != base {
+            out.append(curr)
+            let commit = try? await store.retrieve(curr, as: Commit.self)
+            guard let parent = commit?.parent else { break }
+            curr = parent
+        }
+        return out
+    }
 
     private func reachableHashes(from rootHash: String, using objectStore: Objects) async throws -> Set<String> {
         var seen = Set<String>()
@@ -334,7 +436,7 @@ public final class Client {
         return out
     }
 
-    // TODO: Review — was generated
+    // TODO: Review generated code
     private func updateTreesForChangedPaths(files: [Reference], previousTreeHash: String) async throws -> String {
         var changesByDirectory: [String: Set<String>] = [:]
 
@@ -365,7 +467,7 @@ public final class Client {
         )
     }
 
-    // TODO: Review — was generated
+    // TODO: Review generated code
     private func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [Reference], previousTreeCache: [String: Tree]) async throws -> String {
 
         // If this directory hasn't changed, reuse previous tree
@@ -454,7 +556,7 @@ public final class Client {
                 print("Failed to append: \(error)")
             }
         } else {
-            try await write(message, path: ".wild/logs/heads/main")
+            try await write(message, path: ".wild/logs")
         }
     }
 

@@ -74,7 +74,7 @@ final class ClientTests {
         #expect(initialCommitHash.isEmpty == false)
         #expect(try await client.store.exists(initialCommitHash) == true)
 
-        let head = try await client.read(".wild/refs/heads/main")
+        let head = try await client.read(".wild/HEAD")
         #expect(head == initialCommitHash)
 
         let initialCommit = try await client.store.retrieve(initialCommitHash, as: Commit.self)

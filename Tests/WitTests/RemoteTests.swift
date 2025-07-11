@@ -44,7 +44,7 @@ final class RemoteTests {
         let dir = String(secondCommitHash.prefix(2))
         let file = String(secondCommitHash.dropFirst(2))
         try await client.local.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
-        try await client.write(firstCommitHash, path: ".wild/refs/heads/main")
+        try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new empty client
         let newClient = Client(workingPath: workingPath, privateKey: privateKey)
@@ -53,11 +53,46 @@ final class RemoteTests {
         try await newClient.fetch(remote: remote)
 
         // HEAD should not have changed with fetch
-        let head = try await newClient.read(".wild/refs/heads/main")
+        let head = try await newClient.read(".wild/HEAD")
         #expect(head == firstCommitHash)
 
         let files = try await newClient.tracked()
         #expect(files.count == 2)
+    }
+
+    @Test("Rebase")
+    func rebase() async throws {
+
+        // First commit
+        try await client.write("This is some foo", path: "foo.txt")
+        let firstCommitHash = try await client.commit(
+            message: "First commit",
+            author: "Test User <test@example.com>"
+        )
+        try await client.push(remote: remote)
+
+        // Second commit
+        try await client.write("This is some bar", path: "bar.txt")
+        let secondCommitHash = try await client.commit(
+            message: "Second commit",
+            author: "Test User <test@example.com>",
+            previousCommitHash: firstCommitHash
+        )
+        try await client.push(remote: remote)
+
+        // Delete second commit locally and rollback HEAD
+        let dir = String(secondCommitHash.prefix(2))
+        let file = String(secondCommitHash.dropFirst(2))
+        try await client.local.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
+        try await client.write(firstCommitHash, path: ".wild/HEAD")
+
+        // Establish new client and rebase
+        let newClient = Client(workingPath: workingPath, privateKey: privateKey)
+        try await newClient.rebase(remote: remote)
+
+        let head = try await newClient.read(".wild/HEAD")
+        #expect(head != firstCommitHash)
+        #expect(head != secondCommitHash)
     }
 
     @Test("Reset")
@@ -83,14 +118,14 @@ final class RemoteTests {
         let dir = String(secondCommitHash.prefix(2))
         let file = String(secondCommitHash.dropFirst(2))
         try await client.local.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
-        try await client.write(firstCommitHash, path: ".wild/refs/heads/main")
+        try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new empty client
         let newClient = Client(workingPath: workingPath, privateKey: privateKey)
         try await newClient.reset(remote: remote)
 
         // HEAD should have changed with rebase
-        let head = try await newClient.read(".wild/refs/heads/main")
+        let head = try await newClient.read(".wild/HEAD")
         #expect(head == secondCommitHash)
 
         let files = try await newClient.tracked()
