@@ -77,7 +77,7 @@ public final class Wit {
     // MARK: Examine history and state
 
     /// Show the working tree status.
-    public func status(_ ref: Ref = .head) async throws -> [Reference] {
+    public func status(_ ref: Ref = .head) async throws -> [File] {
         var commitHash: String
         switch ref {
         case .head:
@@ -87,7 +87,7 @@ public final class Wit {
         }
 
         // Gather file references within the commit
-        var fileReferences: [String: Reference] = [:]
+        var fileReferences: [String: File] = [:]
         if !commitHash.isEmpty {
             let commit = try await objects.retrieve(commitHash, as: Commit.self)
             let tree = try await objects.retrieve(commit.tree, as: Tree.self)
@@ -98,20 +98,20 @@ public final class Wit {
         let fileReferencesCurrent = try await retrieveCurrentFileReferences()
 
         // Compare commit references with current files and find additions and modifications
-        var out: [Reference] = []
-        for (path, ref) in fileReferencesCurrent {
+        var out: [File] = []
+        for (path, file) in fileReferencesCurrent {
             if let previousRef = fileReferences[path] {
-                if previousRef.hash != ref.hash {
-                    out.append(ref.apply(kind: .modified))
+                if previousRef.hash != file.hash {
+                    out.append(file.apply(kind: .modified))
                 }
             } else {
-                out.append(ref.apply(kind: .added))
+                out.append(file.apply(kind: .added))
             }
         }
 
         // Find deletions
-        for (path, ref) in fileReferences where fileReferencesCurrent[path] == nil {
-            out.append(ref.apply(kind: .deleted))
+        for (path, file) in fileReferences where fileReferencesCurrent[path] == nil {
+            out.append(file.apply(kind: .deleted))
         }
         return out
     }
@@ -135,15 +135,15 @@ public final class Wit {
     /// Record changes to the repository.
     public func commit(_ message: String) async throws -> String {
         let head = await retrieveHEAD()
-        var refs = try await status()
+        var files = try await status()
 
-        // Store blobs, generate hashes and update the refs before building new tree structure
-        for (index, ref) in refs.enumerated() {
-            guard ref.state != .deleted else { continue }
-            let data = try await disk.get(path: ref.path)
+        // Store blobs, generate hashes and update the file references before building new tree structure
+        for (index, file) in files.enumerated() {
+            guard file.state != .deleted else { continue }
+            let data = try await disk.get(path: file.path)
             guard let blob = Blob(data: data) else { continue }
             let hash = try await objects.store(blob, privateKey: privateKey)
-            refs[index] = ref.apply(hash: hash)
+            files[index] = file.apply(hash: hash)
         }
 
         let parentCommit: Commit?
@@ -155,7 +155,7 @@ public final class Wit {
 
         // Build new tree structure
         let treeHash = try await updateTreesForChangedPaths(
-            files: refs,
+            files: files,
             previousTreeHash: parentCommit?.tree ?? ""
         )
 
@@ -337,9 +337,9 @@ extension Wit {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: Reference] {
+    func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
         let files = try await disk.list(path: path)
-        var out: [String: Reference] = [:]
+        var out: [String: File] = [:]
         for (relativePath, url) in files {
             guard !shouldIgnore(path: relativePath) else { continue }
             if let hash = try? objects.hash(for: url) {
@@ -398,7 +398,7 @@ extension Wit {
     }
 
     // TODO: Review generated code
-    func updateTreesForChangedPaths(files: [Reference], previousTreeHash: String) async throws -> String {
+    func updateTreesForChangedPaths(files: [File], previousTreeHash: String) async throws -> String {
         var changesByDirectory: [String: Set<String>] = [:]
 
         for file in files {
@@ -429,7 +429,7 @@ extension Wit {
     }
 
     // TODO: Review generated code
-    func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [Reference], previousTreeCache: [String: Tree]) async throws -> String {
+    func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [File], previousTreeCache: [String: Tree]) async throws -> String {
 
         // If this directory hasn't changed, reuse previous tree
         if changedSubitems[directory] == nil, let previousTree = previousTreeCache[directory] {

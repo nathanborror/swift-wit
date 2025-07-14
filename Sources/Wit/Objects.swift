@@ -100,8 +100,8 @@ public final class Objects {
         return try await remote.get(path: objectPath)
     }
 
-    public func retrieveFileReferencesRecursive(_ tree: Tree, path: String = "") async throws -> [String: Reference] {
-        var envelopes: [String: Reference] = [:]
+    public func retrieveFileReferencesRecursive(_ tree: Tree, path: String = "") async throws -> [String: File] {
+        var envelopes: [String: File] = [:]
         for entry in tree.entries {
             let envelope = try await retrieve(entry.hash)
             switch envelope.kind {

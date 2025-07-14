@@ -1,6 +1,6 @@
 import Foundation
 
-public struct Reference {
+public struct File {
     public var path: String
     public var hash: String?
     public var state: State?
@@ -19,15 +19,15 @@ public struct Reference {
         self.mode = mode
     }
 
-    public func apply(kind: State) -> Reference {
-        var ref = self
-        ref.state = kind
-        return ref
+    public func apply(kind: State) -> File {
+        var file = self
+        file.state = kind
+        return file
     }
 
-    public func apply(hash: String) -> Reference {
-        var ref = self
-        ref.hash = hash
-        return ref
+    public func apply(hash: String) -> File {
+        var file = self
+        file.hash = hash
+        return file
     }
 }
