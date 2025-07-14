@@ -45,7 +45,7 @@ Tasks:
 - [ ] Add flagged content to commit
 - [ ] Config parser
 - [ ] Log parser
-- [ ] Rename `Reference` to `File`
+- [x] Rename `Reference` to `File`
 
 Client:
 
