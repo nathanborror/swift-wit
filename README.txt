@@ -45,13 +45,14 @@ Tasks:
 - [x] Test workflow for duplicate tree creation
 - [x] Test workflow for fine-grained tree changes
 - [x] Object store needs custom url so it can store files globally to save space
-- [ ] Fix rebase
 - [x] Add memcache to RemoteDisk
-- [ ] Logs should be IRC-like (e.g. `<datetime> COMMIT <hash> <parent> <tree> <kind> <filename> <mimetype?> :<message>`)
-- [ ] Add flagged content to commit
-- [ ] Config parser
-- [ ] Log parser
+- [x] Logs should be IRC-like (e.g. `<datetime> COMMIT <hash> <parent> <tree> <kind> <filename> <mimetype?> :<message>`)
+- [x] Config parser
 - [x] Rename `Reference` to `File`
+- [ ] Fix rebase
+- [ ] Add flags to Commit object
+- [ ] Log parser
+- [ ] Add metadata (mime-type) to Tree object
 
 Client:
 
