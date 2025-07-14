@@ -6,11 +6,12 @@ import Testing
 final class ClientTests {
 
     let workingPath: String
-    let client: Wit
+    let client: Repo
 
     init() async throws {
         self.workingPath = UUID().uuidString
-        self.client = Wit(url: .documentsDirectory/workingPath)
+        self.client = Repo(url: .documentsDirectory/workingPath)
+        try await client.initialize()
     }
 
     deinit {
@@ -19,15 +20,15 @@ final class ClientTests {
 
     @Test("Show status of working directory")
     func status() async throws {
-        try await client.write("This is some foo".data(using: .utf8), path: "Documents/foo.txt")
-        try await client.write("This is some bar".data(using: .utf8), path: "Documents/bar.txt")
+        try await client.write("This is some foo", path: "Documents/foo.txt")
+        try await client.write("This is some bar", path: "Documents/bar.txt")
 
         let initialCommitHash = try await client.commit("Initial commit")
         let initialStatus = try await client.status(.commit(initialCommitHash))
         #expect(initialStatus.isEmpty == true)
 
-        try await client.write("Updated foo".data(using: .utf8), path: "Documents/foo.txt")
-        try await client.write("This is some baz".data(using: .utf8), path: "baz.txt")
+        try await client.write("Updated foo", path: "Documents/foo.txt")
+        try await client.write("This is some baz", path: "baz.txt")
         try await client.delete("Documents/bar.txt")
 
         let status = try await client.status()
@@ -37,8 +38,8 @@ final class ClientTests {
 
     @Test("Commit changes")
     func commit() async throws {
-        try await client.write("This is some foo".data(using: .utf8), path: "Documents/foo.txt")
-        try await client.write("This is some bar".data(using: .utf8), path: "Documents/bar.txt")
+        try await client.write("This is some foo", path: "Documents/foo.txt")
+        try await client.write("This is some bar", path: "Documents/bar.txt")
 
         let initialCommitHash = try await client.commit("Initial commit")
         #expect(initialCommitHash.isEmpty == false)
@@ -71,9 +72,9 @@ final class ClientTests {
 
     @Test("Ensure tree optimization - unchanged subtrees are reused")
     func treeOptimizationTest() async throws {
-        try await client.write("This is some foo".data(using: .utf8), path: "foo.txt")
-        try await client.write("This is some bar".data(using: .utf8), path: "Documents/bar.txt")
-        try await client.write("This is some baz".data(using: .utf8), path: "Documents/Sub/baz.txt")
+        try await client.write("This is some foo", path: "foo.txt")
+        try await client.write("This is some bar", path: "Documents/bar.txt")
+        try await client.write("This is some baz", path: "Documents/Sub/baz.txt")
 
         let initialCommitHash = try await client.commit("Initial commit")
         let initialCommit = try await client.objects.retrieve(initialCommitHash, as: Commit.self)
@@ -81,7 +82,7 @@ final class ClientTests {
         let initialCommitTreeBarEntry = initialCommitTree.entries.first { $0.name == "Documents" }
         let initialCommitTreeBarEntryHash = initialCommitTreeBarEntry?.hash
 
-        try await client.write("Updated foo".data(using: .utf8), path: "foo.txt")
+        try await client.write("Updated foo", path: "foo.txt")
 
         let newCommitHash = try await client.commit("Update file")
         let newCommit = try await client.objects.retrieve(newCommitHash, as: Commit.self)

@@ -7,6 +7,12 @@
 
 The Wild Information Tracker (Wit) is a content addressable storage tool for managing files within a Wild instance. It's inspired by Linus Torvalds' Git.
 
+Requirements:
+
+- Swift 6.1+
+- iOS 18+
+- macOS 15+  
+
 Config file:
 
     [core]

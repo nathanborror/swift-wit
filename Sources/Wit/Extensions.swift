@@ -22,8 +22,6 @@ extension String {
     }
 }
 
-// MARK: - Operators
-
 infix operator /: MultiplicationPrecedence
 
 func / (lhs: URL, rhs: String) -> URL {

@@ -5,11 +5,49 @@ import Testing
 
 @Suite("Remote Tests")
 final class RemoteTests {
+    let workingPath: String
+    let privateKey: Remote.PrivateKey
+    let client: Repo
+    let remote: Remote
+
+    init() async throws {
+        self.workingPath = UUID().uuidString
+        self.privateKey = Remote.PrivateKey()
+        self.client = Repo(url: .documentsDirectory/workingPath, privateKey: privateKey)
+        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
+
+        // Establish public key
+        let publicKey = privateKey.publicKey.rawRepresentation.base64EncodedString()
+
+        // Initialize
+        try await client.initialize()
+        try await client.config([
+            "user.id": workingPath,
+            "user.name": "Alice",
+            "user.email": "alice@example.com",
+            "user.username": "alice",
+            "user.publicKey": publicKey
+        ])
+
+        // Register with remote HTTP server
+        let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
+        let configData = try await client.read(Repo.defaultConfigPath)
+        try await registerRemote.put(path: "register", data: configData, mimetype: nil, privateKey: nil)
+    }
+
+    deinit { teardown() }
+
+    func teardown() {
+        try? FileManager.default.removeItem(at: .documentsDirectory/workingPath)
+        let privateKey = privateKey
+        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
+        Task { try await remote.put(path: "unregister", data: Data(), mimetype: nil, privateKey: privateKey) }
+    }
 
     @Test("Push")
     func push() async throws {
-        try await client.write("This is some foo".data(using: .utf8), path: "foo.txt")
-        try await client.write("This is some bar".data(using: .utf8), path: "bar.txt")
+        try await client.write("This is some foo", path: "foo.txt")
+        try await client.write("This is some bar", path: "bar.txt")
         let initialCommitHash = try await client.commit("Initial commit")
         let initialStatus = try await client.status(.commit(initialCommitHash))
         #expect(initialStatus.isEmpty)
@@ -20,13 +58,13 @@ final class RemoteTests {
 
     @Test("Fetch")
     func fetch() async throws {
-        try await client.write("This is some foo".data(using: .utf8), path: "foo.txt")
-        try await client.write("This is some bar".data(using: .utf8), path: "bar.txt")
+        try await client.write("This is some foo", path: "foo.txt")
+        try await client.write("This is some bar", path: "bar.txt")
         let firstCommitHash = try await client.commit("First commit")
         try await client.push(remote)
 
         // Second commit
-        try await client.write("This is some updated foo".data(using: .utf8), path: "foo.txt")
+        try await client.write("This is some updated foo", path: "foo.txt")
         let secondCommitHash = try await client.commit("Second commit")
         try await client.push(remote)
 
@@ -34,10 +72,10 @@ final class RemoteTests {
         let dir = String(secondCommitHash.prefix(2))
         let file = String(secondCommitHash.dropFirst(2))
         try await client.disk.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
-        try await client.write(firstCommitHash.data(using: .utf8), path: ".wild/HEAD")
+        try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new empty client
-        let newClient = Wit(url: .documentsDirectory/workingPath, privateKey: privateKey)
+        let newClient = Repo(url: .documentsDirectory/workingPath, privateKey: privateKey)
 
         // Fetch remote files
         try await newClient.fetch(remote)
@@ -52,12 +90,12 @@ final class RemoteTests {
     @Test("Rebase")
     func rebase() async throws {
         // First commit
-        try await client.write("This is some foo".data(using: .utf8), path: "foo.txt")
+        try await client.write("This is some foo", path: "foo.txt")
         let firstCommitHash = try await client.commit("First commit")
         try await client.push(remote)
 
         // Second commit
-        try await client.write("This is some bar".data(using: .utf8), path: "bar.txt")
+        try await client.write("This is some bar", path: "bar.txt")
         let secondCommitHash = try await client.commit("Second commit")
         try await client.push(remote)
 
@@ -65,10 +103,10 @@ final class RemoteTests {
         let dir = String(secondCommitHash.prefix(2))
         let file = String(secondCommitHash.dropFirst(2))
         try await client.disk.delete(path: "objects/\(dir)/\(file)", privateKey: privateKey)
-        try await client.write(firstCommitHash.data(using: .utf8), path: ".wild/HEAD")
+        try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new client and rebase
-        let newClient = Wit(url: .documentsDirectory/workingPath, privateKey: privateKey)
+        let newClient = Repo(url: .documentsDirectory/workingPath, privateKey: privateKey)
         try await newClient.rebase(remote)
 
         // TODO: Fix this
@@ -77,33 +115,9 @@ final class RemoteTests {
         //#expect(head != secondCommitHash)
     }
 
-    // MARK: Setup and Teardown
-
-    let workingPath: String
-    let privateKey: Remote.PrivateKey
-    let client: Wit
-    let remote: Remote
-
-    init() async throws {
-        self.workingPath = UUID().uuidString
-        self.privateKey = Remote.PrivateKey()
-        self.client = Wit(url: .documentsDirectory/workingPath, privateKey: privateKey)
-        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
-
-        let publicKey = privateKey.publicKey.rawRepresentation.base64EncodedString()
-        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
-        let data = """
-            {"id": "\(workingPath)", "publicKey": "\(publicKey)"}
-            """.data(using: .utf8)
-        try await remote.put(path: "register", data: data!, mimetype: nil, privateKey: nil)
-    }
-
-    deinit { teardown() }
-
-    func teardown() {
-        try? FileManager.default.removeItem(at: .documentsDirectory/workingPath)
-        let privateKey = privateKey
-        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
-        Task { try await remote.put(path: "unregister", data: Data(), mimetype: nil, privateKey: privateKey) }
+    @Test("Config parsing")
+    func configParsing() async throws {
+        let config = try await client.config()
+        #expect(config["core.version"] == "1.0")
     }
 }

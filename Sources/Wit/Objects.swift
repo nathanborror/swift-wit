@@ -134,6 +134,7 @@ public final class Objects {
         return out
     }
 
+    /// Returns a set of hashes that are referenced by a given commit 
     public func retrieveHashes(_ hash: String) async throws -> Set<String> {
         var seen = Set<String>()
         var stack: [String] = [hash]
@@ -141,7 +142,6 @@ public final class Objects {
         while let hash = stack.popLast() {
             if seen.contains(hash) { continue }
             seen.insert(hash)
-
             if let commit = try? await retrieve(hash, as: Commit.self) {
                 if !commit.tree.isEmpty {
                     stack.append(commit.tree)

@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-public final class Wit {
+public final class Repo {
     static let defaultPath = ".wild"
     static let defaultConfigPath = "\(defaultPath)/config"
     static let defaultObjectsPath = "\(defaultPath)/objects"
@@ -39,6 +39,10 @@ public final class Wit {
         try await disk.get(path: path)
     }
 
+    func write(_ string: String?, path: String) async throws {
+        try await write(string?.data(using: .utf8), path: path)
+    }
+
     func write(_ data: Data?, path: String) async throws {
         guard let data else { return }
         try await disk.put(path: path, data: data, mimetype: nil, privateKey: privateKey)
@@ -50,13 +54,46 @@ public final class Wit {
 
     // MARK: Start a working area
 
-    /// Clone a repository into a new directory.
+    /// Clone a repository into a new directory. This is a shallow clone, only copies objects recursively referenced by HEAD.
     public func clone(_ url: URL) async throws {
-        fatalError("not implemented")
+        try await initialize()
+
+        let remote = RemoteHTTP(baseURL: url)
+        let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
+        let remoteHeadData = try await remote.get(path: Self.defaultHeadPath)
+
+        // Copy remote HEAD
+        guard let remoteHead = String(data: remoteHeadData, encoding: .utf8) else {
+            print("Remote HEAD missing")
+            return
+        }
+        try await write(remoteHead, path: Self.defaultHeadPath)
+
+        // Copy remote objects
+        let remoteHashes = try await remoteObjects.retrieveHashes(remoteHead)
+        for hash in remoteHashes {
+            guard try await !objects.exists(hash) else {
+                continue
+            }
+            let hashPath = objects.hashPath(hash)
+            let path = ".wild/objects/\(hashPath)"
+            let data = try await remote.get(path: path)
+            try await write(data, path: path)
+        }
+
+        // Copy remote config
+        if let remoteConfig = try? await remote.get(path: Self.defaultConfigPath) {
+            try await write(remoteConfig, path: Self.defaultConfigPath)
+        }
+
+        // Copy remote logs
+        if let remoteLogs = try? await remote.get(path: Self.defaultLogsPath) {
+            try await write(remoteLogs, path: Self.defaultLogsPath)
+        }
     }
 
     /// Create an empty repository.
-    public func initialize() async throws {
+    public func initialize(_ remote: Remote? = nil) async throws {
         let manager = FileManager.default
 
         try manager.touch(url/Self.defaultConfigPath)
@@ -65,6 +102,8 @@ public final class Wit {
 
         try manager.mkdir(url/Self.defaultObjectsPath)
         try manager.mkdir(url/".wild"/"remotes"/"origin")
+
+        try await config(["core.version": "1.0"], remote: remote)
     }
 
     // MARK: Work on the current changes
@@ -117,17 +156,9 @@ public final class Wit {
     }
 
     /// Show commit logs.
-    public func log() async throws -> [Commit] {
+    public func log() async throws -> [String] {
         let data = try await disk.get(path: Self.defaultLogsPath)
-        let lines = String(data: data, encoding: .utf8)?.split(separator: "\n").map(String.init) ?? []
-        var commits: [Commit] = []
-        for line in lines {
-            let parts = line.split(separator: " ")
-            let hash = String(parts[0])
-            let commit = try await objects.retrieve(hash, as: Commit.self)
-            commits.append(commit)
-        }
-        return commits
+        return String(data: data, encoding: .utf8)?.split(separator: "\n").map(String.init) ?? []
     }
 
     // MARK: Grow and tweak common history
@@ -168,7 +199,7 @@ public final class Wit {
         let commitHash = try await objects.store(commit, privateKey: privateKey)
 
         // Update HEAD
-        try await write(commitHash.data(using: .utf8), path: Self.defaultHeadPath)
+        try await write(commitHash, path: Self.defaultHeadPath)
 
         // TODO: Append log
 
@@ -320,17 +351,28 @@ public final class Wit {
     // MARK: Configuration
 
     public func config() async throws -> [String: String] {
-        fatalError("not implemented")
+        let configData = try await disk.get(path: Self.defaultConfigPath)
+        let config = String(data: configData, encoding: .utf8) ?? ""
+        return readINI(config)
     }
 
-    public func config(set key: String, value: String) async throws {
-        fatalError("not implemented")
+    public func config(_ values: [String: String], remote: Remote? = nil) async throws {
+        var config = try await config()
+        config.merge(values) { _, new in new }
+
+        let newConfig = writeINI(config)
+        let newConfigData = newConfig.data(using: .utf8)!
+        try await disk.put(path: Self.defaultConfigPath, data: newConfigData, mimetype: nil, privateKey: nil)
+
+        if let remote {
+            try await remote.put(path: Self.defaultConfigPath, data: newConfigData, mimetype: nil, privateKey: privateKey)
+        }
     }
 }
 
 // MARK: - Private
 
-extension Wit {
+extension Repo {
 
     func retrieveHEAD() async -> String {
         guard let data = try? await read(Self.defaultHeadPath) else { return "" }
@@ -474,10 +516,9 @@ extension Wit {
         return try await objects.store(tree, privateKey: privateKey)
     }
 
-    func writeLog(_ commitHash: String, commit: Commit) async throws {
-        let timestamp = Int(commit.timestamp.timeIntervalSince1970)
-        let timezone = timezoneOffset(commit.timestamp)
-        let message = "\(commitHash) \(commit.parent ?? EmptyHash) \(commit.author) \(timestamp) \(timezone) commit: \(commit.message)\n"
+    func writeLog(_ hash: String, commit: Commit) async throws {
+        let timestamp = dateFormatter(commit.timestamp)
+        let message = "\(timestamp) COMMIT \(hash) \(commit.parent) :\(commit.message)\n"
         let messageData = message.data(using: .utf8)
 
         if let fileHandle = FileHandle(forUpdatingAtPath: (url/Self.defaultLogsPath).path) {
@@ -495,11 +536,68 @@ extension Wit {
         }
     }
 
-    func timezoneOffset(_ date: Date) -> String {
-        let secondsFromGMT = TimeZone.current.secondsFromGMT(for: date)
-        let hours = abs(secondsFromGMT) / 3600
-        let minutes = (abs(secondsFromGMT) % 3600) / 60
-        let sign = secondsFromGMT >= 0 ? "+" : "-"
-        return String(format: "%@%02d%02d", sign, hours, minutes)
+    func dateFormatter(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
+    }
+
+    // TODO: Review generated code
+    func readINI(_ input: String) -> [String: String] {
+        var result: [String: String] = [:]
+        var currentSection = ""
+
+        let sectionRegex = try! NSRegularExpression(pattern: #"^\[(.+?)(?:\s+"(.+?)")?\]$"#)
+
+        for line in input.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix(";") || trimmed.hasPrefix("#") {
+                continue // skip comments and empty lines
+            }
+            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                if let match = sectionRegex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
+                    let section = (trimmed as NSString).substring(with: match.range(at: 1))
+                    if match.range(at: 2).location != NSNotFound {
+                        let subsection = (trimmed as NSString).substring(with: match.range(at: 2))
+                        currentSection = "\(section).\(subsection)"
+                    } else {
+                        currentSection = section
+                    }
+                }
+            } else if let equalIndex = trimmed.firstIndex(of: "=") {
+                let key = trimmed[..<equalIndex].trimmingCharacters(in: .whitespaces)
+                let value = trimmed[trimmed.index(after: equalIndex)...].trimmingCharacters(in: .whitespaces)
+                let dictKey = currentSection.isEmpty ? key : "\(currentSection).\(key)"
+                result[dictKey] = value
+            }
+        }
+        return result
+    }
+
+    // TODO: Review generated code
+    func writeINI(_ input: [String: String]) -> String {
+        // Group keys by section
+        var sections: [String: [String: String]] = [:]
+        for (fullKey, value) in input {
+            let parts = fullKey.split(separator: ".")
+            guard parts.count >= 2 else { continue }
+            let section = parts.count == 3
+                ? "\(parts[0]) \"\(parts[1])\""
+                : String(parts[0])
+            let key = parts.count == 3
+                ? String(parts[2])
+                : String(parts[1])
+            sections[section, default: [:]][key] = value
+        }
+        // Write sections
+        var lines: [String] = []
+        for section in sections.keys.sorted() {
+            lines.append("[\(section)]")
+            for (key, value) in sections[section]!.sorted(by: { $0.key < $1.key }) {
+                lines.append("    \(key) = \(value)")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 }
