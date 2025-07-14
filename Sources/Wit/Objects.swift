@@ -23,6 +23,8 @@ public final class Objects {
         self.useCompression = useCompression
     }
 
+    // MARK: Store
+
     public func store(_ storable: any Storable, privateKey: Remote.PrivateKey?) async throws -> String {
         let envelope = Envelope(storable: storable)
         return try await store(envelope, privateKey: privateKey)
@@ -49,6 +51,8 @@ public final class Objects {
         try await remote.put(path: objectPath, data: storedData, mimetype: nil, privateKey: privateKey)
         return objectHash
     }
+
+    // MARK: Retrieve
 
     public func retrieve<T: Storable>(_ hash: String, as type: T.Type) async throws -> T {
         let envelope = try await retrieve(hash)
@@ -96,15 +100,72 @@ public final class Objects {
         return try await remote.get(path: objectPath)
     }
 
+    public func retrieveFileReferencesRecursive(_ tree: Tree, path: String = "") async throws -> [String: Reference] {
+        var envelopes: [String: Reference] = [:]
+        for entry in tree.entries {
+            let envelope = try await retrieve(entry.hash)
+            switch envelope.kind {
+            case .blob:
+                let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
+                envelopes[path] = .init(path: path, hash: entry.hash, mode: .normal)
+            case .tree:
+                let tree = try await retrieve(entry.hash, as: Tree.self)
+                let additional = try await retrieveFileReferencesRecursive(tree, path: entry.name)
+                envelopes.merge(additional) { _, new in new }
+            case .commit:
+                continue
+            }
+        }
+        return envelopes
+    }
+
+    public func retrieveTreesRecursive(_ hash: String, path: String = "") async throws -> [String: Tree] {
+        guard !hash.isEmpty else { return [:] }
+
+        var out: [String: Tree] = [:]
+        let tree = try await retrieve(hash, as: Tree.self)
+        out[path] = tree
+
+        for entry in tree.entries where entry.mode == .directory {
+            let subPath = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
+            let trees = try await retrieveTreesRecursive(entry.hash, path: subPath)
+            out.merge(trees) { (_, new) in new }
+        }
+        return out
+    }
+
+    public func retrieveHashes(_ hash: String) async throws -> Set<String> {
+        var seen = Set<String>()
+        var stack: [String] = [hash]
+
+        while let hash = stack.popLast() {
+            if seen.contains(hash) { continue }
+            seen.insert(hash)
+
+            if let commit = try? await retrieve(hash, as: Commit.self) {
+                if !commit.tree.isEmpty {
+                    stack.append(commit.tree)
+                }
+                if !commit.parent.isEmpty {
+                    stack.append(commit.parent)
+                }
+            } else if let tree = try? await retrieve(hash, as: Tree.self) {
+                for entry in tree.entries {
+                    stack.append(entry.hash)
+                }
+            }
+        }
+        return seen
+    }
+
     public func exists(_ hash: String) async throws -> Bool {
         let objectPath = hashPath(hash)
         return try await remote.exists(path: objectPath)
     }
 
+    // MARK: Hashing
+
     /// Computes the SHA-256 hash of a file at the given URL using memory mapping for efficiency.
-    /// - Parameter url: The URL of the file to hash.
-    /// - Returns: The SHA-256 hash of the file contents as a lowercase hexadecimal string.
-    /// - Throws: An error if the file cannot be opened, mapped, or read.
     ///
     /// This method uses `mmap` to map the file into memory, which is more efficient than reading the entire file into a buffer, especially for large files. If the file
     /// is empty, it returns the SHA-256 hash of empty data.
@@ -135,6 +196,8 @@ public final class Objects {
 
         return hashCompute(data)
     }
+
+    // MARK: Misc
 
     public func header(kind: String, count: Int) -> Data {
         "\(kind) \(count)\0".data(using: .utf8)!

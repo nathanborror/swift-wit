@@ -9,6 +9,11 @@ public struct Tree: Storable {
         public let name: String
         public let hash: String
 
+        public enum Mode: String {
+            case normal = "100644"
+            case directory = "040000"
+        }
+
         public var formatted: String {
             "\(mode.rawValue) \(name)\0\(hash)"
         }
@@ -28,7 +33,7 @@ public struct Tree: Storable {
             // Parse mode (e.g., "100644")
             guard let spaceIndex = content[currentIndex...].firstIndex(of: " ") else { break }
             let modeRaw = String(content[currentIndex..<spaceIndex])
-            guard let mode = Mode(rawValue: modeRaw) else { break }
+            guard let mode = Entry.Mode(rawValue: modeRaw) else { break }
 
             // Parse name
             currentIndex = content.index(after: spaceIndex)
@@ -52,9 +57,4 @@ public struct Tree: Storable {
         let content = entries.map { $0.formatted }.joined()
         return content.data(using: .utf8) ?? Data()
     }
-}
-
-public enum Mode: String {
-    case normal = "100644"
-    case directory = "040000"
 }

@@ -27,22 +27,51 @@ Directory structure:
         ├ config
         ├ HEAD
         ├ logs
-        ├ manifest
         ├ objects/
         └ remotes/
           └ origin/
             ├ HEAD
-            ├ logs
-            └ manifest
+            └ logs
 
 Tasks:
 
 - [x] Test object store for duplicate creation
 - [x] Test workflow for duplicate tree creation
 - [x] Test workflow for fine-grained tree changes
-- [x] Create a manifest and store it in .wit/manifest (untracked)
 - [x] Object store needs custom url so it can store files globally to save space
-- [ ] Create a user config file and store it in .wild/user (untracked)
-- [ ] Add rebase to check for changes and conflicts that could be on the server
-- [ ] Add push to send changes to server, objects before updating head
-- [ ] Cache log information about remotes locally
+- [ ] Fix rebase
+- [ ] Add memcache to RemoteDisk
+- [ ] Logs should be IRC-like (e.g. `<datetime> COMMIT <hash> <parent> <tree> <kind> <filename> <mimetype?> :<message>`)
+- [ ] Add flagged content to commit
+- [ ] Config parser
+- [ ] Log parser
+- [ ] Rename `Reference` to `File`
+
+Client:
+
+The client is designed to be a self sustaining interface to a specific repository.
+
+It offers a high-level line delimited interface similar to IRC.
+
+Example owner usage:
+
+    PULL
+    WRITE foo.txt :This is my foo file
+    WRITE bar.txt :This is my bar file
+    RM baz.txt
+    COMMIT :Updates for the day
+    PUSH origin/main
+    CONFIG SET user.name :Nathan Borror
+    CONFIG SET user.email :nathan@example.com
+    CONFIG LS
+    CONFIG CAT user.email
+    LS
+
+Example viewer:
+
+    CLONE https://localhost:8080/USER_ID
+    LS
+
+    PULL
+    LOG
+    LS

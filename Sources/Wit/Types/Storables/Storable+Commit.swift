@@ -3,14 +3,14 @@ import Foundation
 public struct Commit: Storable {
     public var kind = Envelope.Kind.commit
     public var tree: String
-    public var parent: String?
+    public var parent: String
     public var author: String
     public var message: String
     public var timestamp: Date
 
     public static let dateFormat = "yyyy-MM-dd HH:mm:ss Z"
 
-    public init (tree: String, parent: String? = nil, author: String, message: String, timestamp: Date = .now) {
+    public init (tree: String, parent: String = "", author: String = "", message: String, timestamp: Date = .now) {
         self.tree = tree
         self.parent = parent
         self.author = author
@@ -62,7 +62,7 @@ public struct Commit: Storable {
         }
 
         self.tree = tree
-        self.parent = (parent != EmptyHash) ? parent : nil
+        self.parent = (parent != EmptyHash) ? parent : ""
         self.author = author
         self.message = message
         self.timestamp = timestamp
@@ -75,7 +75,7 @@ public struct Commit: Storable {
 
         var lines: [String] = []
         lines.append("\(treePrefix)\(tree)")
-        lines.append("\(parentPrefix)\(parent ?? EmptyHash)")
+        lines.append("\(parentPrefix)\(parent.isEmpty ? EmptyHash : parent)")
         lines.append("\(authorPrefix)\(author) \(dateString)")
         lines.append("")
         lines.append(message)
