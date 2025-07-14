@@ -40,7 +40,7 @@ Tasks:
 - [x] Test workflow for fine-grained tree changes
 - [x] Object store needs custom url so it can store files globally to save space
 - [ ] Fix rebase
-- [ ] Add memcache to RemoteDisk
+- [x] Add memcache to RemoteDisk
 - [ ] Logs should be IRC-like (e.g. `<datetime> COMMIT <hash> <parent> <tree> <kind> <filename> <mimetype?> :<message>`)
 - [ ] Add flagged content to commit
 - [ ] Config parser

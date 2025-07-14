@@ -7,8 +7,11 @@ public actor RemoteDisk: Remote {
 
     let baseURL: URL
 
+    private var cache: [String: Data]
+
     init(baseURL: URL) {
         self.baseURL =  baseURL
+        self.cache = [:]
     }
 
     public func exists(path: String) async throws -> Bool {
@@ -17,19 +20,26 @@ public actor RemoteDisk: Remote {
     }
 
     public func get(path: String) async throws -> Data {
+        if let cached = cache[path] {
+            return cached
+        }
         let url = baseURL/path
-        return try Data(contentsOf: url)
+        let data = try Data(contentsOf: url)
+        cache[path] = data
+        return data
     }
 
     public func put(path: String, data: Data, mimetype: String?, privateKey: PrivateKey?) async throws {
         let url = baseURL/path
         try FileManager.default.mkdir(url)
         try data.write(to: url, options: .atomic)
+        cache[path] = data
     }
 
     public func delete(path: String, privateKey: PrivateKey?) async throws {
         let url = baseURL/path
         try? FileManager.default.removeItem(at: url)
+        cache.removeValue(forKey: path)
     }
 
     public func list(path: String) async throws -> [String: URL] {
