@@ -201,7 +201,8 @@ public final class Repo {
         // Update HEAD
         try await write(commitHash, path: Self.defaultHeadPath)
 
-        // TODO: Append log
+        // Append log
+        try await writeLog(commitHash, commit: commit)
 
         return commitHash
     }
@@ -254,6 +255,8 @@ public final class Repo {
             let newHash = try await objects.store(rebasedCommit, privateKey: privateKey)
             newParent = newHash
             newCommits.append(newHash)
+
+            // TODO: Write commit to log
         }
         guard let finalHead = newCommits.last, let finalHeadData = finalHead.data(using: .utf8) else { return }
 
@@ -518,7 +521,14 @@ extension Repo {
 
     func writeLog(_ hash: String, commit: Commit) async throws {
         let timestamp = dateFormatter(commit.timestamp)
-        let message = "\(timestamp) COMMIT \(hash) \(commit.parent) :\(commit.message)\n"
+        let parts = [
+            timestamp,
+            "COMMIT",
+            hash,
+            commit.parent.isEmpty ? nil : commit.parent,
+        ].compactMap { $0 }
+
+        let message = "\(parts.joined(separator: " ")) :\(commit.message)\n"
         let messageData = message.data(using: .utf8)
 
         if let fileHandle = FileHandle(forUpdatingAtPath: (url/Self.defaultLogsPath).path) {
