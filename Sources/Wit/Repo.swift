@@ -157,8 +157,8 @@ public final class Repo {
 
     /// Show commit logs.
     public func log() async throws -> [String] {
-        let data = try await disk.get(path: Self.defaultLogsPath)
-        return String(data: data, encoding: .utf8)?.split(separator: "\n").map(String.init) ?? []
+        let logs = await retrieveLogs()
+        return logs.split(separator: "\n").map(String.init)
     }
 
     // MARK: Grow and tweak common history
@@ -198,10 +198,8 @@ public final class Repo {
         )
         let commitHash = try await objects.store(commit, privateKey: privateKey)
 
-        // Update HEAD
+        // Update HEAD, log commit
         try await write(commitHash, path: Self.defaultHeadPath)
-
-        // Append log
         try await writeLog(commitHash, commit: commit)
 
         return commitHash
@@ -303,12 +301,11 @@ public final class Repo {
             let _ = try await remoteObjects.store(envelope, privateKey: privateKey)
         }
 
-        // Update remote HEAD
-        _ = try await remote.put(path: Self.defaultHeadPath, data: head.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
-
-        // Append log line(s)
-        // let remoteLogsURL = remoteDirURL/"logs"
-        print("update remote logs not implemented")
+        // Update remote HEAD, log
+        let currentHead = await retrieveHEAD()
+        let currentLogs = await retrieveLogs()
+        try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+        try await remote.put(path: Self.defaultLogsPath, data: currentLogs.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
 
         // Finished
         print("Pushed \(toPush.count) objects to \(remote)")
@@ -379,6 +376,11 @@ extension Repo {
 
     func retrieveHEAD() async -> String {
         guard let data = try? await read(Self.defaultHeadPath) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    func retrieveLogs() async -> String {
+        guard let data = try? await read(Self.defaultLogsPath) else { return "" }
         return String(data: data, encoding: .utf8) ?? ""
     }
 
