@@ -384,6 +384,7 @@ extension Repo {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
+    /// Returns a dictionary of file references for files in the working directory keyed with their path, ignoring any ignored files.
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
         let files = try await disk.list(path: path)
         var out: [String: File] = [:]
@@ -487,15 +488,18 @@ extension Repo {
 
         var entries: [Tree.Entry] = []
         let directoryURL = directory.isEmpty ? url : (url/directory)
-
-        let contents = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.isDirectoryKey])
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        )
 
         for item in contents {
-            let name = item.lastPathComponent
-            guard !shouldIgnore(path: name) && !name.hasPrefix(".") else { continue }
-
+            let filename = item.lastPathComponent
             let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            let relativePath = directory.isEmpty ? name : "\(directory)/\(name)"
+            let isRegularFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
+            let isSymbolicLink = (try? item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
+            let relativePath = directory.isEmpty ? filename : "\(directory)/\(filename)"
 
             if isDirectory {
                 // Recursively build or reuse subtree
@@ -507,19 +511,28 @@ extension Repo {
                 )
                 entries.append(.init(
                     mode: .directory,
-                    name: name,
+                    name: filename,
                     hash: subTreeHash
                 ))
-            } else {
+            } else if isSymbolicLink {
+                if let file = files.first(where: { $0.path == relativePath }), let hash = file.hash {
+                    entries.append(.init(
+                        mode: .symbolicLink,
+                        name: filename,
+                        hash: hash
+                    ))
+                } else if let previousTree = previousTreeCache[directory], let previousEntry = previousTree.entries.first(where: { $0.name == filename }) {
+                    entries.append(previousEntry)
+                }
+            } else if isRegularFile {
                 // Use new blob hash or get from previous tree
                 if let file = files.first(where: { $0.path == relativePath }), let hash = file.hash {
                     entries.append(.init(
                         mode: .normal,
-                        name: name,
+                        name: filename,
                         hash: hash
                     ))
-                } else if let previousTree = previousTreeCache[directory],
-                          let previousEntry = previousTree.entries.first(where: { $0.name == name }) {
+                } else if let previousTree = previousTreeCache[directory], let previousEntry = previousTree.entries.first(where: { $0.name == filename }) {
                     entries.append(previousEntry)
                 }
             }

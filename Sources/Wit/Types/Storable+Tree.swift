@@ -12,6 +12,8 @@ public struct Tree: Storable {
         public enum Mode: String {
             case normal = "100644"
             case directory = "040000"
+            case executable = "100755"
+            case symbolicLink = "120000"
         }
 
         public var encoding: String {
