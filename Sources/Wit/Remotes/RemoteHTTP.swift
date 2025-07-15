@@ -108,6 +108,7 @@ public actor RemoteHTTP: Remote {
     }
 
     public func list(path: String) async throws -> [String: URL] {
+        print("RemoteHTTP.list not implemented")
         return [:]
     }
 
