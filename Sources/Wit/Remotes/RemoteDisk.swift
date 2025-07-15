@@ -44,12 +44,14 @@ public actor RemoteDisk: Remote {
 
     public func list(path: String) async throws -> [String: URL] {
         let url = baseURL/path
-        return try await Task.detached(priority: .userInitiated) {
+        return await Task.detached(priority: .userInitiated) {
             var out: [String: URL] = [:]
-            guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
-                throw NSError(domain: "FileEnumeration", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to enumerate files"])
-            }
-            while let fileURL = enumerator.nextObject() as? URL {
+            let enumerator = FileManager.default.enumerator(
+                at: url,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+            while let fileURL = enumerator?.nextObject() as? URL {
                 let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
                 out[relativePath] = fileURL
             }
