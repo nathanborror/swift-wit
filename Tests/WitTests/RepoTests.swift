@@ -18,6 +18,27 @@ final class RepoTests {
         try? FileManager.default.removeItem(at: .documentsDirectory/workingPath)
     }
 
+    @Test("Clone")
+    func clone() async throws {
+        try await client.write("This is some foo", path: "Documents/foo.txt")
+        let _ = try await client.commit("Commit A")
+
+        try await client.write("This is some bar", path: "Documents/bar.txt")
+        let commitHash2 = try await client.commit("Commit B")
+
+        // Clone into new repo
+        let workingPathB = UUID().uuidString
+        let repoB = Repo(url: .documentsDirectory/workingPathB)
+        try await repoB.clone(client.disk)
+        #expect(await repoB.retrieveHEAD() == commitHash2)
+
+        // Make commit and push into old repo
+        try await repoB.write("This is some bar", path: "baz.txt")
+        let commitHash3 = try await repoB.commit("Commit B")
+        try await repoB.push(client.disk)
+        #expect(await client.retrieveHEAD() == commitHash3)
+    }
+
     @Test("Status of working directory")
     func status() async throws {
         try await client.write("This is some foo", path: "Documents/foo.txt")
@@ -106,5 +127,10 @@ final class RepoTests {
         let initialFooEntry = initialCommitTree.entries.first { $0.name == "foo.txt" }!
         let newFooEntry = newCommitTree.entries.first { $0.name == "foo.txt" }!
         #expect(initialFooEntry.hash != newFooEntry.hash, "'foo' directory tree should be different")
+    }
+
+    @Test("Common Ancestor")
+    func commonAncestor() async throws {
+        
     }
 }

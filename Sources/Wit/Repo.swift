@@ -55,10 +55,9 @@ public final class Repo {
     // MARK: Start a working area
 
     /// Clone a repository into a new directory. This is a shallow clone, only copies objects recursively referenced by HEAD.
-    public func clone(_ url: URL) async throws {
+    public func clone(_ remote: Remote, bare: Bool = true) async throws {
         try await initialize()
 
-        let remote = RemoteHTTP(baseURL: url)
         let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
         let remoteHeadData = try await remote.get(path: Self.defaultHeadPath)
 
@@ -75,8 +74,7 @@ public final class Repo {
             guard try await !objects.exists(hash) else {
                 continue
             }
-            let hashPath = objects.hashPath(hash)
-            let path = ".wild/objects/\(hashPath)"
+            let path = objects.hashPath(hash)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
         }
@@ -89,6 +87,10 @@ public final class Repo {
         // Copy remote logs
         if let remoteLogs = try? await remote.get(path: Self.defaultLogsPath) {
             try await write(remoteLogs, path: Self.defaultLogsPath)
+        }
+
+        if !bare {
+            // TODO: Build working directory
         }
     }
 
