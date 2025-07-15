@@ -5,17 +5,18 @@ public struct Tree: Storable {
     public var entries: [Entry]
 
     public struct Entry {
-        public let mode: Mode
-        public let name: String
-        public let hash: String
+        public var mode: Mode
+        public var name: String
+        public var hash: String
 
         public enum Mode: String {
             case normal = "100644"
             case directory = "040000"
         }
 
-        public var formatted: String {
-            "\(mode.rawValue) \(name)\0\(hash)"
+        public var encoding: String {
+            let parts = [hash, mode.rawValue, ":\(name)"].compactMap { $0 }
+            return parts.joined(separator: " ")
         }
     }
 
@@ -27,34 +28,30 @@ public struct Tree: Storable {
         let content = String(data: data, encoding: .utf8) ?? ""
         var entries: [Tree.Entry] = []
 
-        var currentIndex = content.startIndex
+        let lines = content.split(separator: "\n")
+        for line in lines {
+            guard let range = line.range(of: " :") else { continue }
 
-        while currentIndex < content.endIndex {
-            // Parse mode (e.g., "100644")
-            guard let spaceIndex = content[currentIndex...].firstIndex(of: " ") else { break }
-            let modeRaw = String(content[currentIndex..<spaceIndex])
-            guard let mode = Entry.Mode(rawValue: modeRaw) else { break }
+            let metaSlice = line[..<range.lowerBound]
+            let nameSlice = line[range.upperBound...]
+            let parts = metaSlice.split(separator: " ").map(String.init)
+            let name = nameSlice.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            // Parse name
-            currentIndex = content.index(after: spaceIndex)
-            guard let nullIndex = content[currentIndex...].firstIndex(of: "\0") else { break }
-            let name = String(content[currentIndex..<nullIndex])
+            guard parts.count >= 2 else { continue }
 
-            // Parse hash (32 bytes = 64 hex characters for SHA-256)
-            currentIndex = content.index(after: nullIndex)
-            let hashEndIndex = content.index(currentIndex, offsetBy: 64, limitedBy: content.endIndex) ?? content.endIndex
-            let hash = String(content[currentIndex..<hashEndIndex])
-
-            entries.append(Tree.Entry(mode: mode, name: name, hash: hash))
-
-            currentIndex = hashEndIndex
+            entries.append(.init(
+                mode: .init(rawValue: parts[1]) ?? .normal,
+                name: name,
+                hash: parts[0]
+            ))
         }
+        
         self.entries = entries
     }
 
     public func encode() -> Data {
         let entries = entries.sorted { $0.name < $1.name }
-        let content = entries.map { $0.formatted }.joined()
+        let content = entries.map { $0.encoding }.joined(separator: "\n")
         return content.data(using: .utf8) ?? Data()
     }
 }

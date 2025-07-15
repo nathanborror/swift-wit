@@ -505,11 +505,19 @@ extension Repo {
                     files: files,
                     previousTreeCache: previousTreeCache
                 )
-                entries.append(.init(mode: .directory, name: name, hash: subTreeHash))
+                entries.append(.init(
+                    mode: .directory,
+                    name: name,
+                    hash: subTreeHash
+                ))
             } else {
                 // Use new blob hash or get from previous tree
                 if let file = files.first(where: { $0.path == relativePath }), let hash = file.hash {
-                    entries.append(.init(mode: .normal, name: name, hash: hash))
+                    entries.append(.init(
+                        mode: .normal,
+                        name: name,
+                        hash: hash
+                    ))
                 } else if let previousTree = previousTreeCache[directory],
                           let previousEntry = previousTree.entries.first(where: { $0.name == name }) {
                     entries.append(previousEntry)
