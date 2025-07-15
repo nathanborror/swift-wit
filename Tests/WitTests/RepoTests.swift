@@ -70,6 +70,17 @@ final class RepoTests {
         #expect(newCommitTree.entries.count == 0)
     }
 
+    @Test("File References")
+    func fileReferences() async throws {
+        try await client.write("This is some foo", path: "foo.txt")
+        try await client.write("This is some bar", path: "Documents/bar.txt")
+        
+        let references = try await client.retrieveCurrentFileReferences()
+        #expect(references.count == 2)
+        #expect(references["foo.txt"]?.state == nil)
+        #expect(references["Documents/bar.txt"]?.state == nil)
+    }
+
     @Test("Tree optimization")
     func treeOptimizationTest() async throws {
         try await client.write("This is some foo", path: "foo.txt")
