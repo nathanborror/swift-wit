@@ -22,6 +22,13 @@ extension String {
     }
 }
 
+extension Collection {
+
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 infix operator /: MultiplicationPrecedence
 
 func / (lhs: URL, rhs: String) -> URL {
