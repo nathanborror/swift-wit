@@ -51,8 +51,8 @@ Tasks:
 - [x] Rename `Reference` to `File`
 - [ ] Fix rebase
 - [ ] Add flags to Commit object
-- [ ] Log parser
-- [ ] Add metadata (mime-type) to Tree object
+- [x] Log parser
+- [ ] Build working directory for authenticated user
 
 Client:
 

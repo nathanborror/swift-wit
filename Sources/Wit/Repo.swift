@@ -156,9 +156,9 @@ public final class Repo {
     }
 
     /// Show commit logs.
-    public func log() async throws -> [String] {
-        let logs = await retrieveLogs()
-        return logs.split(separator: "\n").map(String.init)
+    public func log() async throws -> [Log] {
+        let contents = await retrieveLogFile()
+        return contents.split(separator: "\n").map(String.init).map { LogDecoder().decode($0) }
     }
 
     // MARK: Grow and tweak common history
@@ -200,7 +200,7 @@ public final class Repo {
 
         // Update HEAD, log commit
         try await write(commitHash, path: Self.defaultHeadPath)
-        try await writeLog(commitHash, commit: commit)
+        try await log(commit: commit, hash: commitHash)
 
         return commitHash
     }
@@ -264,7 +264,7 @@ public final class Repo {
         // Log new commits
         for newHash in newCommits {
             let commit = try await objects.retrieve(newHash, as: Commit.self)
-            try await writeLog(newHash, commit: commit)
+            try await log(commit: commit, hash: newHash)
         }
 
         print("Rebased \(localChain.count) commits on top of remote, new HEAD: \(finalHead)")
@@ -303,7 +303,7 @@ public final class Repo {
 
         // Update remote HEAD, log
         let currentHead = await retrieveHEAD()
-        let currentLogs = await retrieveLogs()
+        let currentLogs = await retrieveLogFile()
         try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
         try await remote.put(path: Self.defaultLogsPath, data: currentLogs.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
 
@@ -376,12 +376,14 @@ public final class Repo {
 
 extension Repo {
 
+    /// Returns the current HEAD or an empty string if the file is empty.
     func retrieveHEAD() async -> String {
         guard let data = try? await read(Self.defaultHeadPath) else { return "" }
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    func retrieveLogs() async -> String {
+    /// Returns the full contents of a log file as a string.
+    func retrieveLogFile() async -> String {
         guard let data = try? await read(Self.defaultLogsPath) else { return "" }
         return String(data: data, encoding: .utf8) ?? ""
     }
@@ -391,7 +393,6 @@ extension Repo {
         let files = try await disk.list(path: path)
         var out: [String: File] = [:]
         for (relativePath, url) in files {
-            guard !shouldIgnore(path: relativePath) else { continue }
             if let hash = try? objects.hash(for: url) {
                 out[relativePath] = .init(path: relativePath, hash: hash, mode: .normal)
             }
@@ -399,17 +400,21 @@ extension Repo {
         return out
     }
 
-    func shouldIgnore(path: String) -> Bool {
-        let ignore = [".DS_Store", ".wild"]
-        if ignore.contains(path) {
-            return true
+    /// Encodes a Commit log message and appends it to the logs file.
+    func log(commit: Commit, hash: String) async throws {
+        let line = LogEncoder().encode(commit: commit, hash: hash) + "\n"
+        guard let lineData = line.data(using: .utf8) else { return }
+        guard let fileHandle = FileHandle(forUpdatingAtPath: (url/Self.defaultLogsPath).path) else {
+            print("Log Error: missing `\(Self.defaultLogsPath)` file")
+            return
         }
-        for component in path.split(separator: "/").map(String.init) {
-            if ignore.contains(component) {
-                return true
-            }
+        defer { try? fileHandle.close() }
+        do {
+            try fileHandle.seekToEnd()
+            try fileHandle.write(contentsOf: lineData)
+        } catch {
+            print("Log Error: failed to append `\(error)`")
         }
-        return false
     }
 
     // TODO: Review generated code
@@ -542,39 +547,5 @@ extension Repo {
 
         let tree = Tree(entries: entries)
         return try await objects.store(tree, privateKey: privateKey)
-    }
-
-    func writeLog(_ hash: String, commit: Commit) async throws {
-        let timestamp = dateFormatter(commit.timestamp)
-        let parts = [
-            timestamp,
-            "COMMIT",
-            hash,
-            commit.parent.isEmpty ? nil : commit.parent,
-        ].compactMap { $0 }
-
-        let message = "\(parts.joined(separator: " ")) :\(commit.message)\n"
-        let messageData = message.data(using: .utf8)
-
-        if let fileHandle = FileHandle(forUpdatingAtPath: (url/Self.defaultLogsPath).path) {
-            defer { try? fileHandle.close() }
-            do {
-                try fileHandle.seekToEnd()
-                if let data = message.data(using: .utf8) {
-                    try fileHandle.write(contentsOf: data)
-                }
-            } catch {
-                print("Failed to append: \(error)")
-            }
-        } else {
-            try await write(messageData, path: ".wild/logs")
-        }
-    }
-
-    func dateFormatter(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter.string(from: date)
     }
 }
