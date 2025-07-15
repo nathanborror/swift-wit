@@ -3,7 +3,9 @@ import CryptoKit
 import Testing
 @testable import Wit
 
-@Suite("Remote Tests")
+let isServerRunning = false
+
+@Suite("Remote Tests", .enabled(if: isServerRunning))
 final class RemoteTests {
     let workingPath: String
     let privateKey: Remote.PrivateKey

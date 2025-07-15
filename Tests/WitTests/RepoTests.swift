@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import Wit
 
-@Suite("Client Tests")
-final class ClientTests {
+@Suite("Repo Tests")
+final class RepoTests {
 
     let workingPath: String
     let client: Repo
@@ -18,7 +18,7 @@ final class ClientTests {
         try? FileManager.default.removeItem(at: .documentsDirectory/workingPath)
     }
 
-    @Test("Show status of working directory")
+    @Test("Status of working directory")
     func status() async throws {
         try await client.write("This is some foo", path: "Documents/foo.txt")
         try await client.write("This is some bar", path: "Documents/bar.txt")
@@ -70,7 +70,7 @@ final class ClientTests {
         #expect(newCommitTree.entries.count == 0)
     }
 
-    @Test("Ensure tree optimization - unchanged subtrees are reused")
+    @Test("Tree optimization")
     func treeOptimizationTest() async throws {
         try await client.write("This is some foo", path: "foo.txt")
         try await client.write("This is some bar", path: "Documents/bar.txt")
