@@ -1,5 +1,8 @@
 import Foundation
+import OSLog
 import CryptoKit
+
+private let logger = Logger(subsystem: "Repo", category: "Wit")
 
 public final class Repo {
     static let defaultPath = ".wild"
@@ -7,6 +10,11 @@ public final class Repo {
     static let defaultObjectsPath = "\(defaultPath)/objects"
     static let defaultHeadPath = "\(defaultPath)/HEAD"
     static let defaultLogsPath = "\(defaultPath)/logs"
+
+    public enum Error: Swift.Error {
+        case missingHEAD
+        case missingCommonAncestor
+    }
 
     public enum Ref {
         case head
@@ -55,7 +63,7 @@ public final class Repo {
     // MARK: Start a working area
 
     /// Clone a repository into a new directory. This is a shallow clone, only copies objects recursively referenced by HEAD.
-    public func clone(_ remote: Remote, bare: Bool = true) async throws {
+    public func clone(_ remote: Remote, bare: Bool = false) async throws {
         try await initialize()
 
         let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
@@ -89,9 +97,11 @@ public final class Repo {
             try await write(remoteLogs, path: Self.defaultLogsPath)
         }
 
-        if !bare {
-            // TODO: Build working directory
-        }
+        if bare { return }
+
+        // Create working directory
+        let commit = try await objects.retrieve(remoteHead, as: Commit.self)
+        try await buildWorkingDirectoryRecursively(commit.tree)
     }
 
     /// Create an empty repository.
@@ -208,7 +218,7 @@ public final class Repo {
     }
 
     /// Reapply commits on top of HEAD.
-    public func rebase(_ remote: Remote) async throws {
+    public func rebase(_ remote: Remote) async throws -> String {
         try await fetch(remote)
 
         let head = await retrieveHEAD()
@@ -216,60 +226,55 @@ public final class Repo {
         let remoteHead = String(data: remoteHeadData, encoding: .utf8) ?? ""
 
         guard !head.isEmpty, !remoteHead.isEmpty else {
-            print("Either local HEAD or remote HEAD is missing")
-            return
+            throw Error.missingHEAD
         }
         if head == remoteHead {
-            print("Nothing to rebase; already up-to-date")
-            return
+            logger.info("Nothing to rebase; already up-to-date")
+            return head
         }
 
-        // 3. Find common ancestor
-        let ancestor = try await findCommonAncestor(localHead: head, remoteHead: remoteHead)
-        guard let base = ancestor else {
-            print("No common ancestor found; refusing to rebase")
-            return
+        // Determine common ancestor
+        guard let ancestor = try await findCommonAncestor(localHead: head, remoteHead: remoteHead) else {
+            throw Error.missingCommonAncestor
         }
 
-        // 4. Collect local-only commits (from localHead back to base, reversed)
-        let localChain = try await ancestryPath(from: head, stopBefore: base)
+        // Determine local-only commits (from localHead back to common ancestor, reversed)
+        let localChain = try await ancestryPath(from: head, stopBefore: ancestor)
         if localChain.isEmpty {
-            print("Nothing to rebase; local has no unique commits")
-            return
+            logger.info("Nothing to rebase; local has no unique commits")
+            return head
         }
 
-        // 5. Replay (recommit) on top of remoteHead
+        // Replay (recommit) on top of remoteHead
         var newParent = remoteHead
-        var newCommits: [String] = []
+        var rebasedCommits: [String] = []
+
         for hash in localChain.reversed() {
-            let commit = try await objects.retrieve(hash, as: Commit.self)
+            var commit = try await objects.retrieve(hash, as: Commit.self)
+
+            // TODO: Perform true commit
             // Commit may refer to an old tree; instead, you might want to re-stage files for each commit, or at minimum use their tree as-is.
             // If you want to re-apply diffs/patches (true rebase), that's more complex; for now we copy as if the tree is the working tree.
-            let rebasedCommit = Commit(
-                tree: commit.tree,
-                parent: newParent,
-                author: commit.author,
-                message: commit.message,
-                timestamp: commit.timestamp
-            )
-            let newHash = try await objects.store(rebasedCommit, privateKey: privateKey)
-            newParent = newHash
-            newCommits.append(newHash)
+            commit.parent = newParent
 
-            // TODO: Write commit to log
+            // Store modified commit
+            let commitHash = try await objects.store(commit, privateKey: privateKey)
+            newParent = commitHash
+            rebasedCommits.append(commitHash)
+
+            // Log commit
+            try await log(commit: commit, hash: commitHash)
         }
-        guard let finalHead = newCommits.last, let finalHeadData = finalHead.data(using: .utf8) else { return }
 
-        // 6. Update local HEAD & manifest & logs
+        // Update local HEAD
+        guard let finalHead = rebasedCommits.last, let finalHeadData = finalHead.data(using: .utf8) else {
+            throw Error.missingHEAD
+        }
         try await write(finalHeadData, path: Self.defaultHeadPath)
 
-        // Log new commits
-        for newHash in newCommits {
-            let commit = try await objects.retrieve(newHash, as: Commit.self)
-            try await log(commit: commit, hash: newHash)
-        }
+        logger.info("Rebased \(localChain.count) commits on top of remote, new HEAD: \(finalHead)")
 
-        print("Rebased \(localChain.count) commits on top of remote, new HEAD: \(finalHead)")
+        return finalHead
     }
 
     // MARK: Workflows
@@ -338,8 +343,7 @@ public final class Repo {
             guard try await !objects.exists(hash) else {
                 continue
             }
-            let hashPath = objects.hashPath(hash)
-            let path = ".wild/objects/\(hashPath)"
+            let path = objects.hashPath(hash)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
         }
@@ -549,5 +553,22 @@ extension Repo {
 
         let tree = Tree(entries: entries)
         return try await objects.store(tree, privateKey: privateKey)
+    }
+
+    /// Build a directory of files from the object store relative to the given tree hash. Recurse down the tree to build a complete directory structure.
+    func buildWorkingDirectoryRecursively(_ treeHash: String, path: String = "") async throws {
+        let tree = try await objects.retrieve(treeHash, as: Tree.self)
+        for entry in tree.entries {
+            switch entry.mode {
+            case .directory:
+                let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
+                try await buildWorkingDirectoryRecursively(entry.hash, path: path)
+            case .normal, .executable, .symbolicLink:
+                let blob = try await objects.retrieve(entry.hash, as: Blob.self)
+                let fileURL = url/path/entry.name
+                try FileManager.default.mkdir(fileURL)
+                try blob.content.write(to: fileURL)
+            }
+        }
     }
 }

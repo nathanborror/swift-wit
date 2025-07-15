@@ -8,23 +8,67 @@ final class RepoTests {
     @Test("Clone")
     func clone() async throws {
         let (pathA, repoA) = NewRepo()
-        defer { RemoveDirectory(pathA) }
+        let (pathB, repoB) = NewRepo()
 
+        defer { RemoveDirectory(pathA) }
+        defer { RemoveDirectory(pathB) }
+
+        // RepoA first two commits
         let repoA_Commit1_Hash = try await CommitFile(repoA, path: "Documents/foo.txt")
         let repoA_Commit2_Hash = try await CommitFile(repoA, path: "Documents/bar.txt")
         #expect(repoA_Commit1_Hash != repoA_Commit2_Hash)
 
-        // Clone into new repo
-        let (pathB, repoB) = NewRepo()
-        defer { RemoveDirectory(pathB) }
-
+        // RepoB clone
         try await repoB.clone(repoA.disk)
-        #expect(await repoB.retrieveHEAD() == repoA_Commit2_Hash)
+        let repoB_HEAD = await repoB.retrieveHEAD()
+        let repoB_HEAD_Commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
+        let repoB_HEAD_Commit_Tree = try await repoB.objects.retrieve(repoB_HEAD_Commit.tree, as: Tree.self)
+        #expect(repoB_HEAD == repoA_Commit2_Hash)
+        #expect(repoB_HEAD_Commit_Tree.entries.count == 1)
 
-        // Make commit and push into old repo
+        // RepoB commit
         let repoB_Commit3_Hash = try await CommitFile(repoB, path: "baz.txt")
+        let repoB_Commit3 = try await repoB.objects.retrieve(repoB_Commit3_Hash, as: Commit.self)
+        let repoB_Commit3_Tree = try await repoB.objects.retrieve(repoB_Commit3.tree, as: Tree.self)
+        #expect(repoB_Commit3_Tree.entries.count == 2)
+
+        // RepoB push to RepoA
         try await repoB.push(repoA.disk)
         #expect(await repoA.retrieveHEAD() == repoB_Commit3_Hash)
+    }
+
+    @Test("Rebase")
+    func rebase() async throws {
+        let (pathA, repoA) = NewRepo()
+        let (pathB, repoB) = NewRepo()
+
+//        defer { RemoveDirectory(pathA) }
+//        defer { RemoveDirectory(pathB) }
+
+        // RepoA → Commit 1
+        let repoA_Commit1_Hash = try await CommitFile(repoA, path: "foo.txt")
+
+        // RepoB clone RepoA
+        try await repoB.clone(repoA.disk)
+        #expect(await repoB.retrieveHEAD() == repoA_Commit1_Hash)
+
+        // RepoA → Commit 2
+        let repoA_Commit2_Hash = try await CommitFile(repoA, path: "bar.txt")
+        let repoA_Commit2_Commit = try await repoA.objects.retrieve(repoA_Commit2_Hash, as: Commit.self)
+        let repoA_Commit2_Tree = try await repoA.objects.retrieve(repoA_Commit2_Commit.tree, as: Tree.self)
+        #expect(repoA_Commit2_Tree.entries.count == 2)
+
+        // RepoB → Commit 3
+        let repoB_Commit3_Hash = try await CommitFile(repoB, path: "baz.txt")
+        let repoB_Commit3_Commit = try await repoB.objects.retrieve(repoB_Commit3_Hash, as: Commit.self)
+        let repoB_Commit3_Tree = try await repoB.objects.retrieve(repoB_Commit3_Commit.tree, as: Tree.self)
+        #expect(repoB_Commit3_Tree.entries.count == 2)
+
+        // RepoB Rebase
+//        let repoB_HEAD = try await repoB.rebase(repoA.disk)
+//        let repoB_HEAD_commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
+//        let repoB_HEAD_tree = try await repoB.objects.retrieve(repoB_HEAD_commit.tree, as: Tree.self)
+//        #expect(repoB_HEAD_tree.entries.count == 3)
     }
 
     @Test("Status of working directory")
