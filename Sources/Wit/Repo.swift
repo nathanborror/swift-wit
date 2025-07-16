@@ -245,25 +245,54 @@ public final class Repo {
             return head
         }
 
+        // Get the file state at the remote HEAD
+        let remoteCommit = try await objects.retrieve(remoteHead, as: Commit.self)
+        let remoteTree = try await objects.retrieve(remoteCommit.tree, as: Tree.self)
+        var currentFiles = try await objects.retrieveFileReferencesRecursive(remoteTree)
+
         // Replay (recommit) on top of remoteHead
         var newParent = remoteHead
         var rebasedCommits: [String] = []
 
         for hash in localChain.reversed() {
-            var commit = try await objects.retrieve(hash, as: Commit.self)
+            let commit = try await objects.retrieve(hash, as: Commit.self)
 
-            // TODO: Perform true commit
-            // Commit may refer to an old tree; instead, you might want to re-stage files for each commit, or at minimum use their tree as-is.
-            // If you want to re-apply diffs/patches (true rebase), that's more complex; for now we copy as if the tree is the working tree.
-            commit.parent = newParent
+            // Get the changes introduced by this commit
+            let commitTree = try await objects.retrieve(commit.tree, as: Tree.self)
+            let commitFiles = try await objects.retrieveFileReferencesRecursive(commitTree)
 
-            // Store modified commit
-            let commitHash = try await objects.store(commit, privateKey: privateKey)
-            newParent = commitHash
-            rebasedCommits.append(commitHash)
+            let parentFiles: [String: File]
+            if !commit.parent.isEmpty {
+                let parentCommit = try await objects.retrieve(commit.parent, as: Commit.self)
+                let parentTree = try await objects.retrieve(parentCommit.tree, as: Tree.self)
+                parentFiles = try await objects.retrieveFileReferencesRecursive(parentTree)
+            } else {
+                parentFiles = [:]
+            }
 
-            // Log commit
-            try await log(commit: commit, hash: commitHash)
+            // Apply changes from this commit to current state
+            for (path, file) in commitFiles {
+                currentFiles[path] = file
+            }
+
+            // Remove files that were deleted in this commit
+            for (path, _) in parentFiles where commitFiles[path] == nil {
+                currentFiles.removeValue(forKey: path)
+            }
+
+            // Build new tree with merged changes
+            let mergedTreeHash = try await buildTreeFromFiles(currentFiles)
+
+            let rebasedCommit = Commit(
+                tree: mergedTreeHash,
+                parent: newParent,
+                message: commit.message
+            )
+            let rebasedCommitHash = try await objects.store(rebasedCommit, privateKey: privateKey)
+            newParent = rebasedCommitHash
+            rebasedCommits.append(rebasedCommitHash)
+
+            try await log(commit: rebasedCommit, hash: rebasedCommitHash)
         }
 
         // Update local HEAD
@@ -271,6 +300,10 @@ public final class Repo {
             throw Error.missingHEAD
         }
         try await write(finalHeadData, path: Self.defaultHeadPath)
+
+        // Update working directory to reflect new HEAD
+        let finalCommit = try await objects.retrieve(finalHead, as: Commit.self)
+        try await buildWorkingDirectoryRecursively(finalCommit.tree)
 
         logger.info("Rebased \(localChain.count) commits on top of remote, new HEAD: \(finalHead)")
 
@@ -570,5 +603,99 @@ extension Repo {
                 try blob.content.write(to: fileURL)
             }
         }
+    }
+}
+
+// TODO: Review generated code
+extension Repo {
+
+    // Build a tree from a flat dictionary of file references
+    private func buildTreeFromFiles(_ files: [String: File]) async throws -> String {
+        var rootEntries: [Tree.Entry] = []
+        var subTrees: [String: [Tree.Entry]] = [:]
+
+        // Group files by directory
+        for (path, file) in files {
+            let components = path.split(separator: "/").map(String.init)
+
+            if components.count == 1 {
+                // File in root directory
+                rootEntries.append(.init(
+                    mode: file.mode,
+                    name: components[0],
+                    hash: file.hash ?? ""
+                ))
+            } else {
+                // File in subdirectory
+                let dirPath = components.dropLast().joined(separator: "/")
+                let fileName = components.last!
+
+                subTrees[dirPath, default: []].append(.init(
+                    mode: file.mode,
+                    name: fileName,
+                    hash: file.hash ?? ""
+                ))
+            }
+        }
+
+        // Build subtrees recursively
+        var processedDirs: [String: String] = [:] // path -> tree hash
+
+        // Sort directories by depth (deepest first)
+        let sortedDirs = subTrees.keys.sorted { $0.split(separator: "/").count > $1.split(separator: "/").count }
+
+        for dirPath in sortedDirs {
+            let entries = subTrees[dirPath]!
+            var treeEntries = entries
+
+            // Add any subdirectories
+            for (subDirPath, subDirHash) in processedDirs {
+                if let subDirName = getImmediateSubdirectory(of: dirPath, fullPath: subDirPath) {
+                    treeEntries.append(.init(
+                        mode: .directory,
+                        name: subDirName,
+                        hash: subDirHash
+                    ))
+                }
+            }
+
+            let tree = Tree(entries: treeEntries.sorted { $0.name < $1.name })
+            let treeHash = try await objects.store(tree, privateKey: privateKey)
+            processedDirs[dirPath] = treeHash
+        }
+
+        // Add subdirectories to root
+        for (dirPath, dirHash) in processedDirs {
+            if !dirPath.contains("/") {
+                rootEntries.append(.init(
+                    mode: .directory,
+                    name: dirPath,
+                    hash: dirHash
+                ))
+            }
+        }
+
+        let rootTree = Tree(entries: rootEntries.sorted { $0.name < $1.name })
+        return try await objects.store(rootTree, privateKey: privateKey)
+    }
+
+    private func getImmediateSubdirectory(of parent: String, fullPath: String) -> String? {
+        guard fullPath.hasPrefix(parent + "/") else { return nil }
+        let suffix = fullPath.dropFirst(parent.count + 1)
+        let components = suffix.split(separator: "/")
+        return components.count == 1 ? String(components[0]) : nil
+    }
+
+    // Update working directory to match a specific commit
+    private func updateWorkingDirectory(to commitHash: String) async throws {
+        // Clear current working directory (except .wild)
+        let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+        for item in contents where item.lastPathComponent != ".wild" {
+            try FileManager.default.removeItem(at: item)
+        }
+
+        // Build new working directory
+        let commit = try await objects.retrieve(commitHash, as: Commit.self)
+        try await buildWorkingDirectoryRecursively(commit.tree)
     }
 }

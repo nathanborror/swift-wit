@@ -109,7 +109,7 @@ final class RemoteTests {
 
         // Establish new client and rebase
         let newClient = Repo(url: .documentsDirectory/workingPath, privateKey: privateKey)
-        try await newClient.rebase(remote)
+        let _ = try await newClient.rebase(remote)
 
         // TODO: Fix this
         //let head = await newClient.retrieveHEAD()

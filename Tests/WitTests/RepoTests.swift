@@ -42,8 +42,8 @@ final class RepoTests {
         let (pathA, repoA) = NewRepo()
         let (pathB, repoB) = NewRepo()
 
-//        defer { RemoveDirectory(pathA) }
-//        defer { RemoveDirectory(pathB) }
+        defer { RemoveDirectory(pathA) }
+        defer { RemoveDirectory(pathB) }
 
         // RepoA → Commit 1
         let repoA_Commit1_Hash = try await CommitFile(repoA, path: "foo.txt")
@@ -65,10 +65,10 @@ final class RepoTests {
         #expect(repoB_Commit3_Tree.entries.count == 2)
 
         // RepoB Rebase
-//        let repoB_HEAD = try await repoB.rebase(repoA.disk)
-//        let repoB_HEAD_commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
-//        let repoB_HEAD_tree = try await repoB.objects.retrieve(repoB_HEAD_commit.tree, as: Tree.self)
-//        #expect(repoB_HEAD_tree.entries.count == 3)
+        let repoB_HEAD = try await repoB.rebase(repoA.disk)
+        let repoB_HEAD_commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
+        let repoB_HEAD_tree = try await repoB.objects.retrieve(repoB_HEAD_commit.tree, as: Tree.self)
+        #expect(repoB_HEAD_tree.entries.count == 3)
     }
 
     @Test("Status of working directory")
@@ -131,7 +131,7 @@ final class RepoTests {
 
         try await repo.write("This is some foo", path: "foo.txt")
         try await repo.write("This is some bar", path: "Documents/bar.txt")
-        
+
         let references = try await repo.retrieveCurrentFileReferences()
         #expect(references.count == 2)
         #expect(references["foo.txt"]?.state == nil)
