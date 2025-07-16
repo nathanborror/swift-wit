@@ -24,11 +24,11 @@ final class RemoteTests {
         // Initialize
         try await client.initialize()
         try await client.config([
+            "core.publicKey": publicKey,
             "user.id": workingPath,
             "user.name": "Alice",
             "user.email": "alice@example.com",
             "user.username": "alice",
-            "user.publicKey": publicKey
         ])
 
         // Register with remote HTTP server

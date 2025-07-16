@@ -17,6 +17,7 @@ Config file:
 
     [core]
         version = 1.0
+        publicKey = PUBLIC_KEY_STRING
     [user]
         id = USER_ID
         name = Nathan Borror
