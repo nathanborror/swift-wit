@@ -118,13 +118,6 @@ public final class Repo {
         try await config(["core.version": "1.0"], remote: remote)
     }
 
-    // MARK: Work on the current changes
-
-    /// Add file contents to the index.
-    public func stage(_ paths: String...) async throws {
-        fatalError("not implemented")
-    }
-
     // MARK: Examine history and state
 
     /// Show the working tree status.
