@@ -351,6 +351,12 @@ public final class Repo {
 
     /// Download objects from another repository.
     public func fetch(_ remote: Remote) async throws {
+
+        // Copy remote config
+        if let remoteConfig = try? await remote.get(path: Self.defaultConfigPath) {
+            try await write(remoteConfig, path: Self.defaultConfigPath)
+        }
+
         // Download remote head
         let remoteHeadData = try await remote.get(path: Self.defaultHeadPath)
         let remoteHead = String(data: remoteHeadData, encoding: .utf8) ?? ""
