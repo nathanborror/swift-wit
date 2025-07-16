@@ -606,9 +606,9 @@ extension Repo {
     }
 }
 
-// TODO: Review generated code
 extension Repo {
 
+    // TODO: Review generated code
     // Build a tree from a flat dictionary of file references
     private func buildTreeFromFiles(_ files: [String: File]) async throws -> String {
         var rootEntries: [Tree.Entry] = []
@@ -679,6 +679,7 @@ extension Repo {
         return try await objects.store(rootTree, privateKey: privateKey)
     }
 
+    // TODO: Review generated code
     private func getImmediateSubdirectory(of parent: String, fullPath: String) -> String? {
         guard fullPath.hasPrefix(parent + "/") else { return nil }
         let suffix = fullPath.dropFirst(parent.count + 1)
@@ -686,6 +687,7 @@ extension Repo {
         return components.count == 1 ? String(components[0]) : nil
     }
 
+    // TODO: Review generated code
     // Update working directory to match a specific commit
     private func updateWorkingDirectory(to commitHash: String) async throws {
         // Clear current working directory (except .wild)
