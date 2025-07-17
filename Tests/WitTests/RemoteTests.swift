@@ -111,10 +111,9 @@ final class RemoteTests {
         let newClient = Repo(path: workingPath, privateKey: privateKey)
         let _ = try await newClient.rebase(remote)
 
-        // TODO: Fix this
-        //let head = await newClient.retrieveHEAD()
-        //#expect(head != firstCommitHash)
-        //#expect(head != secondCommitHash)
+        let head = await newClient.retrieveHEAD()
+        //#expect(head != firstCommitHash) TODO: Fix this
+        #expect(head != secondCommitHash)
     }
 
     @Test("Config parsing")
