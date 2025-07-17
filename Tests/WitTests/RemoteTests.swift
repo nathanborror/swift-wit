@@ -15,7 +15,7 @@ final class RemoteTests {
     init() async throws {
         self.workingPath = UUID().uuidString
         self.privateKey = Remote.PrivateKey()
-        self.client = Repo(url: .documentsDirectory/workingPath, privateKey: privateKey)
+        self.client = Repo(path: workingPath, privateKey: privateKey)
         self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
 
         // Establish public key
@@ -77,7 +77,7 @@ final class RemoteTests {
         try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new empty client
-        let newClient = Repo(url: .documentsDirectory/workingPath, privateKey: privateKey)
+        let newClient = Repo(path: workingPath, privateKey: privateKey)
 
         // Fetch remote files
         try await newClient.fetch(remote)
@@ -108,7 +108,7 @@ final class RemoteTests {
         try await client.write(firstCommitHash, path: ".wild/HEAD")
 
         // Establish new client and rebase
-        let newClient = Repo(url: .documentsDirectory/workingPath, privateKey: privateKey)
+        let newClient = Repo(path: workingPath, privateKey: privateKey)
         let _ = try await newClient.rebase(remote)
 
         // TODO: Fix this

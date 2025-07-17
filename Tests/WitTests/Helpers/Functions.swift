@@ -3,7 +3,7 @@ import Foundation
 
 func NewRepo() -> (String, Repo) {
     let workingPath = UUID().uuidString
-    let repo = Repo(url: .documentsDirectory/workingPath)
+    let repo = Repo(path: workingPath)
     return (workingPath, repo)
 }
 

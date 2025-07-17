@@ -26,15 +26,15 @@ public final class Repo {
         case name(String)
     }
 
-    var url: URL
+    var diskURL: URL
     var disk: Remote
     var objects: Objects
     var privateKey: Remote.PrivateKey?
 
-    public init(url: URL, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
-        self.url = url
+    public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
+        self.diskURL = URL.documentsDirectory.appending(path: path)
         self.privateKey = privateKey
-        self.disk = RemoteDisk(baseURL: url)
+        self.disk = RemoteDisk(baseURL: diskURL)
         self.objects = Objects(
             remote: disk,
             objectsPath: objectsPath ?? Self.defaultObjectsPath
@@ -108,12 +108,12 @@ public final class Repo {
     public func initialize(_ remote: Remote? = nil) async throws {
         let manager = FileManager.default
 
-        try manager.touch(url/Self.defaultConfigPath)
-        try manager.touch(url/Self.defaultHeadPath)
-        try manager.touch(url/Self.defaultLogsPath)
+        try manager.touch(diskURL/Self.defaultConfigPath)
+        try manager.touch(diskURL/Self.defaultHeadPath)
+        try manager.touch(diskURL/Self.defaultLogsPath)
 
-        try manager.mkdir(url/Self.defaultObjectsPath)
-        try manager.mkdir(url/".wild"/"remotes"/"origin")
+        try manager.mkdir(diskURL/Self.defaultObjectsPath)
+        try manager.mkdir(diskURL/".wild"/"remotes"/"origin")
 
         try await config(["core.version": "1.0"], remote: remote)
     }
@@ -442,7 +442,7 @@ extension Repo {
     func log(commit: Commit, hash: String) async throws {
         let line = LogEncoder().encode(commit: commit, hash: hash) + "\n"
         guard let lineData = line.data(using: .utf8) else { return }
-        guard let fileHandle = FileHandle(forUpdatingAtPath: (url/Self.defaultLogsPath).path) else {
+        guard let fileHandle = FileHandle(forUpdatingAtPath: (diskURL/Self.defaultLogsPath).path) else {
             print("Log Error: missing `\(Self.defaultLogsPath)` file")
             return
         }
@@ -532,7 +532,7 @@ extension Repo {
         }
 
         var entries: [Tree.Entry] = []
-        let directoryURL = directory.isEmpty ? url : (url/directory)
+        let directoryURL = directory.isEmpty ? diskURL : (diskURL/directory)
         let contents = try FileManager.default.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey],
@@ -597,7 +597,7 @@ extension Repo {
                 try await buildWorkingDirectoryRecursively(entry.hash, path: path)
             case .normal, .executable, .symbolicLink:
                 let blob = try await objects.retrieve(entry.hash, as: Blob.self)
-                let fileURL = url/path/entry.name
+                let fileURL = diskURL/path/entry.name
                 try FileManager.default.mkdir(fileURL)
                 try blob.content.write(to: fileURL)
             }
@@ -690,7 +690,7 @@ extension Repo {
     // Update working directory to match a specific commit
     private func updateWorkingDirectory(to commitHash: String) async throws {
         // Clear current working directory (except .wild)
-        let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+        let contents = try FileManager.default.contentsOfDirectory(at: diskURL, includingPropertiesForKeys: nil)
         for item in contents where item.lastPathComponent != ".wild" {
             try FileManager.default.removeItem(at: item)
         }
