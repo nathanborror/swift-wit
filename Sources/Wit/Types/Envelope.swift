@@ -1,10 +1,10 @@
 import Foundation
 
-public struct Envelope {
+public struct Envelope: Codable {
     public let kind: Kind
     public let content: Data
 
-    public enum Kind: String {
+    public enum Kind: String, Codable {
         case blob
         case tree
         case commit

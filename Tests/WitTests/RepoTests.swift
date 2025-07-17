@@ -20,7 +20,7 @@ final class RepoTests {
 
         // RepoB clone
         try await repoB.clone(repoA.disk)
-        let repoB_HEAD = await repoB.retrieveHEAD()
+        let repoB_HEAD = await repoB.retrieveHEAD()!
         let repoB_HEAD_Commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
         let repoB_HEAD_Commit_Tree = try await repoB.objects.retrieve(repoB_HEAD_Commit.tree, as: Tree.self)
         #expect(repoB_HEAD == repoA_Commit2_Hash)
@@ -106,7 +106,7 @@ final class RepoTests {
 
         let commit1 = try await repo.objects.retrieve(commit1_Hash, as: Commit.self)
         #expect(commit1.message == "Initial commit")
-        #expect(commit1.parent == "")
+        #expect(commit1.parent == nil)
 
         let commit1_Tree = try await repo.objects.retrieve(commit1.tree, as: Tree.self)
         #expect(commit1_Tree.entries.count == 1)

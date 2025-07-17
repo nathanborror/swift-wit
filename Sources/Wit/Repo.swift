@@ -122,7 +122,7 @@ public final class Repo {
 
     /// Show the working tree status.
     public func status(_ ref: Ref = .head) async throws -> [File] {
-        var commitHash: String
+        var commitHash: String?
         switch ref {
         case .head:
             commitHash = await retrieveHEAD()
@@ -132,7 +132,7 @@ public final class Repo {
 
         // Gather file references within the commit
         var fileReferences: [String: File] = [:]
-        if !commitHash.isEmpty {
+        if let commitHash {
             let commit = try await objects.retrieve(commitHash, as: Commit.self)
             let tree = try await objects.retrieve(commit.tree, as: Tree.self)
             fileReferences = try await objects.retrieveFileReferencesRecursive(tree)
@@ -162,7 +162,9 @@ public final class Repo {
 
     /// Show commit logs.
     public func log() async throws -> [Log] {
-        let contents = await retrieveLogFile()
+        guard let contents = await retrieveLogFile() else {
+            return []
+        }
         return contents.split(separator: "\n").map(String.init).map { LogDecoder().decode($0) }
     }
 
@@ -183,7 +185,7 @@ public final class Repo {
         }
 
         let parentCommit: Commit?
-        if !head.isEmpty {
+        if let head {
             parentCommit = try await objects.retrieve(head, as: Commit.self)
         } else {
             parentCommit = nil
@@ -216,9 +218,9 @@ public final class Repo {
 
         let head = await retrieveHEAD()
         let remoteHeadData = try await read(".wild/remotes/origin/HEAD")
-        let remoteHead = String(data: remoteHeadData, encoding: .utf8) ?? ""
+        let remoteHead = String(data: remoteHeadData, encoding: .utf8)
 
-        guard !head.isEmpty, !remoteHead.isEmpty else {
+        guard let head, let remoteHead else {
             throw Error.missingHEAD
         }
         if head == remoteHead {
@@ -255,8 +257,8 @@ public final class Repo {
             let commitFiles = try await objects.retrieveFileReferencesRecursive(commitTree)
 
             let parentFiles: [String: File]
-            if !commit.parent.isEmpty {
-                let parentCommit = try await objects.retrieve(commit.parent, as: Commit.self)
+            if let parent = commit.parent {
+                let parentCommit = try await objects.retrieve(parent, as: Commit.self)
                 let parentTree = try await objects.retrieve(parentCommit.tree, as: Tree.self)
                 parentFiles = try await objects.retrieveFileReferencesRecursive(parentTree)
             } else {
@@ -307,8 +309,7 @@ public final class Repo {
 
     /// Update remote along with associated objects.
     public func push(_ remote: Remote) async throws {
-        let head = await retrieveHEAD()
-        guard !head.isEmpty else {
+        guard let head = await retrieveHEAD() else {
             print("Nothing to push: local HEAD not set")
             return
         }
@@ -335,10 +336,12 @@ public final class Repo {
         }
 
         // Update remote HEAD, log
-        let currentHead = await retrieveHEAD()
-        let currentLogs = await retrieveLogFile()
-        try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
-        try await remote.put(path: Self.defaultLogsPath, data: currentLogs.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+        if let currentHead = await retrieveHEAD() {
+            try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+        }
+        if let currentLogs = await retrieveLogFile() {
+            try await remote.put(path: Self.defaultLogsPath, data: currentLogs.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+        }
 
         // Finished
         print("Pushed \(toPush.count) objects to \(remote)")
@@ -415,15 +418,22 @@ public final class Repo {
 extension Repo {
 
     /// Returns the current HEAD or an empty string if the file is empty.
-    func retrieveHEAD() async -> String {
-        guard let data = try? await read(Self.defaultHeadPath) else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
+    func retrieveHEAD() async -> String? {
+        guard let data = try? await read(Self.defaultHeadPath) else {
+            return nil
+        }
+        if let hash = String(data: data, encoding: .utf8) {
+            return hash.isEmpty ? nil : hash
+        }
+        return nil
     }
 
     /// Returns the full contents of a log file as a string.
-    func retrieveLogFile() async -> String {
-        guard let data = try? await read(Self.defaultLogsPath) else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
+    func retrieveLogFile() async -> String? {
+        guard let data = try? await read(Self.defaultLogsPath) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     /// Returns a dictionary of file references for files in the working directory keyed with their path, ignoring any ignored files.

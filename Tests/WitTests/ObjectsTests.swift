@@ -105,8 +105,6 @@ final class ObjectsTests {
         let commitTimestamp = Date.now
         let commit = Commit(
             tree: treeHash,
-            parent: "",
-            author: "Nathan Borror <nathan@nathan.run>",
             message: "Initial commit",
             timestamp: commitTimestamp
         )
@@ -133,11 +131,5 @@ final class ObjectsTests {
 
         let memoryMappedHash = try storage.hash(for: url)
         #expect(blobHash == memoryMappedHash)
-    }
-
-    private func commitDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = Commit.dateFormat
-        return formatter.string(from: date)
     }
 }

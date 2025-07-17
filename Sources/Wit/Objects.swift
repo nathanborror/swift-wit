@@ -146,8 +146,8 @@ public final class Objects {
                 if !commit.tree.isEmpty {
                     stack.append(commit.tree)
                 }
-                if !commit.parent.isEmpty {
-                    stack.append(commit.parent)
+                if let parent = commit.parent {
+                    stack.append(parent)
                 }
             } else if let tree = try? await retrieve(hash, as: Tree.self) {
                 for entry in tree.entries {

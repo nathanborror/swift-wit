@@ -20,7 +20,7 @@ struct LogEncoder {
             timestamp,
             "COMMIT",
             hash,
-            commit.parent.isEmpty ? nil : commit.parent,
+            commit.parent,
             ":\(commit.message)",
         ].compactMap { $0 }
         return parts.joined(separator: " ")
