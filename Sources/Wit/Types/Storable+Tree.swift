@@ -26,7 +26,7 @@ public struct Tree: Storable {
         self.entries = entries
     }
 
-    public init?(data: Data) {
+    public init(data: Data) throws {
         let content = String(data: data, encoding: .utf8) ?? ""
         var entries: [Tree.Entry] = []
 
@@ -51,7 +51,7 @@ public struct Tree: Storable {
         self.entries = entries
     }
 
-    public func encode() -> Data {
+    public func encode() throws -> Data {
         let entries = entries.sorted { $0.name < $1.name }
         let content = entries.map { $0.encoding }.joined(separator: "\n")
         return content.data(using: .utf8) ?? Data()

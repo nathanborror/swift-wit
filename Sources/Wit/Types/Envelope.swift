@@ -32,9 +32,9 @@ public struct Envelope {
         self.content = content
     }
 
-    public init(storable: any Storable) {
+    public init(storable: any Storable) throws {
         self.kind = storable.kind
-        self.content = storable.encode()
+        self.content = try storable.encode()
     }
 
     public func encode() -> Data {

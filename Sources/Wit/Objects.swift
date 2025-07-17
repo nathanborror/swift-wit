@@ -26,7 +26,7 @@ public final class Objects {
     // MARK: Store
 
     public func store(_ storable: any Storable, privateKey: Remote.PrivateKey?) async throws -> String {
-        let envelope = Envelope(storable: storable)
+        let envelope = try Envelope(storable: storable)
         return try await store(envelope, privateKey: privateKey)
     }
 
@@ -59,15 +59,15 @@ public final class Objects {
         switch envelope.kind {
         case .blob:
             if type == Blob.self {
-                return Blob(data: envelope.content) as! T
+                return try Blob(data: envelope.content) as! T
             }
         case .tree:
             if type == Tree.self {
-                return Tree(data: envelope.content) as! T
+                return try Tree(data: envelope.content) as! T
             }
         case .commit:
             if type == Commit.self {
-                return Commit(data: envelope.content) as! T
+                return try Commit(data: envelope.content) as! T
             }
         }
         throw Error.invalidObjectFormat

@@ -177,7 +177,7 @@ public final class Repo {
         for (index, file) in files.enumerated() {
             guard file.state != .deleted else { continue }
             let data = try await disk.get(path: file.path)
-            guard let blob = Blob(data: data) else { continue }
+            guard let blob = try? Blob(data: data) else { continue }
             let hash = try await objects.store(blob, privateKey: privateKey)
             files[index] = file.apply(hash: hash)
         }
@@ -526,7 +526,7 @@ extension Repo {
 
         // If this directory hasn't changed, reuse previous tree
         if changedSubitems[directory] == nil, let previousTree = previousTreeCache[directory] {
-            let data = previousTree.encode()
+            let data = try previousTree.encode()
             let header = objects.header(kind: previousTree.kind.rawValue, count: data.count)
             return objects.hashCompute(header+data)
         }

@@ -10,7 +10,7 @@ public struct Commit: Storable {
 
     public static let dateFormat = "yyyy-MM-dd HH:mm:ss Z"
 
-    public init (tree: String, parent: String = "", author: String = "", message: String, timestamp: Date = .now) {
+    public init(tree: String, parent: String = "", author: String = "", message: String, timestamp: Date = .now) {
         self.tree = tree
         self.parent = parent
         self.author = author
@@ -18,11 +18,8 @@ public struct Commit: Storable {
         self.timestamp = timestamp
     }
 
-    public init?(data: Data) {
-        guard let content = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-
+    public init(data: Data) throws {
+        let content = String(data: data, encoding: .utf8) ?? ""
         let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
 
         var tree = ""
@@ -68,7 +65,7 @@ public struct Commit: Storable {
         self.timestamp = timestamp
     }
 
-    public func encode() -> Data {
+    public func encode() throws -> Data {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = Commit.dateFormat
         let dateString = dateFormatter.string(from: timestamp)

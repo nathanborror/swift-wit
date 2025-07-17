@@ -3,7 +3,7 @@ import Foundation
 public protocol Storable {
     var kind: Envelope.Kind { get }
 
-    init?(data: Data)
+    init(data: Data) throws
 
-    func encode() -> Data
+    func encode() throws -> Data
 }

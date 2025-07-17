@@ -5,7 +5,7 @@ public struct Blob: Storable {
     public var path: String?
     public var content: Data
 
-    public init?(data: Data) {
+    public init(data: Data) throws {
         self.path = nil
         self.content = data
     }
@@ -15,7 +15,7 @@ public struct Blob: Storable {
         self.content = string.data(using: .utf8) ?? Data()
     }
 
-    public func encode() -> Data {
+    public func encode() throws -> Data {
         content
     }
 }
