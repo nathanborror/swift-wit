@@ -1,6 +1,6 @@
 import Foundation
 
-public struct Blob: Storable {
+public struct Blob: Storable, Sendable {
     public var kind = Envelope.Kind.blob
     public var content: Data
 

@@ -1,12 +1,12 @@
 import Foundation
 
-public struct File {
+public struct File: Sendable {
     public var path: String
     public var hash: String?
     public var state: State?
     public var mode: Tree.Entry.Mode
 
-    public enum State {
+    public enum State: Sendable {
         case added
         case modified
         case deleted

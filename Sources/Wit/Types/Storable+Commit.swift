@@ -1,6 +1,6 @@
 import Foundation
 
-public struct Commit: Storable, Codable {
+public struct Commit: Storable, Codable, Sendable {
     public var kind = Envelope.Kind.commit
     public var tree: String
     public var parent: String?

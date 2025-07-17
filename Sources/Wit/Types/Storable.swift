@@ -1,6 +1,6 @@
 import Foundation
 
-public protocol Storable {
+public protocol Storable: Sendable {
     var kind: Envelope.Kind { get }
 
     init(data: Data) throws
