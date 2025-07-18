@@ -46,20 +46,20 @@ public final class Repo {
 
     // MARK: Working with files
 
-    func read(_ path: String) async throws -> Data {
+    public func read(_ path: String) async throws -> Data {
         try await disk.get(path: path)
     }
 
-    func write(_ string: String?, path: String) async throws {
+    public func write(_ string: String?, path: String) async throws {
         try await write(string?.data(using: .utf8), path: path)
     }
 
-    func write(_ data: Data?, path: String) async throws {
+    public func write(_ data: Data?, path: String) async throws {
         guard let data else { return }
         try await disk.put(path: path, data: data, mimetype: nil, privateKey: privateKey)
     }
 
-    func delete(_ path: String) async throws {
+    public func delete(_ path: String) async throws {
         try await disk.delete(path: path, privateKey: privateKey)
     }
 
