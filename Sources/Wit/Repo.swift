@@ -123,7 +123,11 @@ public final class Repo {
         try manager.mkdir(diskURL/Self.defaultObjectsPath)
         try manager.mkdir(diskURL/".wild"/"remotes"/"origin")
 
-        try await config(["core.version": "1.0"], remote: remote)
+        // Set current version
+        try await config(path: Self.defaultConfigPath, values: ["core": ["version": "1.0"]], remote: remote)
+
+        // Cache ignores
+        self.ignores = await retrieveIgnores() ?? ignores
     }
 
     // MARK: Examine history and state
@@ -400,21 +404,28 @@ public final class Repo {
     // MARK: Configuration
 
     /// Returns the config file as a string dictionary.
-    public func config() async throws -> [String: String] {
-        let configData = try await disk.get(path: Self.defaultConfigPath)
+    public func config(path: String) async throws -> Config {
+        let configData = try await disk.get(path: path)
         let config = String(data: configData, encoding: .utf8) ?? ""
         return ConfigDecoder().decode(config)
     }
 
     /// Writes the given values to the config file and optionally uploads it to the given remote.
-    public func config(_ values: [String: String], remote: Remote? = nil) async throws {
-        var config = try await config()
-        config.merge(values) { _, new in new }
+    public func config(path: String, values: [String: [String: String]], remote: Remote? = nil) async throws {
+        let config = try await config(path: path)
+        var mergedSections = config.sections
 
-        let newConfig = ConfigEncoder().encode(config)
+        for (section, newValues) in values {
+            if case .dictionary(let oldDict) = mergedSections[section] {
+                mergedSections[section] = .dictionary(oldDict.merging(newValues) { _, new in new })
+            } else {
+                mergedSections[section] = .dictionary(newValues)
+            }
+        }
+
+        let newConfig = ConfigEncoder().encode(mergedSections)
         let newConfigData = newConfig.data(using: .utf8)!
         try await disk.put(path: Self.defaultConfigPath, data: newConfigData, mimetype: nil, privateKey: nil)
-
         if let remote {
             try await remote.put(path: Self.defaultConfigPath, data: newConfigData, mimetype: nil, privateKey: privateKey)
         }

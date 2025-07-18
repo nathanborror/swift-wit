@@ -28,11 +28,11 @@ final class ConfigTests {
                 name = Test User
             """
 
-        let config: [String: String] = [
-            "core.version": "1.0",
-            "user.name": "Test User",
+        let config: [String: Section] = [
+            "core": .dictionary(["version": "1.0"]),
+            "user": .dictionary(["name": "Test User"]),
         ]
-        
+
         let encoded = ConfigEncoder().encode(config)
         #expect(encoded == expecting)
     }

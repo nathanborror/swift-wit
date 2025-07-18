@@ -23,13 +23,20 @@ final class RemoteTests {
 
         // Initialize
         try await client.initialize()
-        try await client.config([
-            "core.publicKey": publicKey,
-            "user.id": workingPath,
-            "user.name": "Alice",
-            "user.email": "alice@example.com",
-            "user.username": "alice",
-        ])
+        try await client.config(
+            path: Repo.defaultConfigPath,
+            values: [
+                "core": [
+                    "publicKey": publicKey
+                ],
+                "user": [
+                    "id": workingPath,
+                    "name": "Alice",
+                    "email": "alice@example.com",
+                    "username": "alice",
+                ],
+            ]
+        )
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
@@ -118,7 +125,7 @@ final class RemoteTests {
 
     @Test("Config parsing")
     func configParsing() async throws {
-        let config = try await client.config()
+        let config = try await client.config(path: Repo.defaultConfigPath)
         #expect(config["core.version"] == "1.0")
     }
 }

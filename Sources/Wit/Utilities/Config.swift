@@ -1,27 +1,48 @@
 import Foundation
 
+public enum Section: Sendable {
+    case dictionary([String: String])
+    case array([String])
+}
+
+public struct Config: Sendable {
+    public var sections: [String: Section] = [:]
+
+    public subscript(section section: String) -> Section? {
+        sections[section]
+    }
+
+    // TODO: Review generated code
+    public subscript(key: String) -> String? {
+        let parts = key.split(separator: ".", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        guard case let .dictionary(dict) = sections[parts[0]] else { return nil }
+        return dict[parts[1]]
+    }
+
+    public init(sections: [String: Section] = [:]) {
+        self.sections = sections
+    }
+}
+
 struct ConfigEncoder {
-    
-    func encode(_ input: [String: String]) -> String {
-        // Group keys by section
-        var sections: [String: [String: String]] = [:]
-        for (fullKey, value) in input {
-            let parts = fullKey.split(separator: ".")
-            guard parts.count >= 2 else { continue }
-            let section = parts.count == 3
-            ? "\(parts[0]) \"\(parts[1])\""
-            : String(parts[0])
-            let key = parts.count == 3
-            ? String(parts[2])
-            : String(parts[1])
-            sections[section, default: [:]][key] = value
-        }
-        // Write sections
+
+    // TODO: Review generated code
+    func encode(_ input: [String: Section]) -> String {
         var lines: [String] = []
-        for section in sections.keys.sorted() {
+        for section in input.keys.sorted() {
             lines.append("[\(section)]")
-            for (key, value) in sections[section]!.sorted(by: { $0.key < $1.key }) {
-                lines.append("    \(key) = \(value)")
+            switch input[section]! {
+            case .dictionary(let dict):
+                for (key, value) in dict.sorted(by: { $0.key < $1.key }) {
+                    if !value.isEmpty {
+                        lines.append("    \(key) = \(value)")
+                    }
+                }
+            case .array(let array):
+                for value in array {
+                    lines.append("    \(value)")
+                }
             }
         }
         return lines.joined(separator: "\n")
@@ -30,34 +51,48 @@ struct ConfigEncoder {
 
 struct ConfigDecoder {
 
-    func decode(_ input: String) -> [String: String] {
-        var result: [String: String] = [:]
-        var currentSection = ""
-
-        let sectionRegex = try! NSRegularExpression(pattern: #"^\[(.+?)(?:\s+"(.+?)")?\]$"#)
+    // TODO: Review generated code
+    func decode(_ input: String) -> Config {
+        var sections: [String: Section] = [:]
+        var currentSection: String?
+        var currentValues: [String] = []
+        var currentDict: [String: String] = [:]
 
         for line in input.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty || trimmed.hasPrefix(";") || trimmed.hasPrefix("#") {
-                continue // skip comments and empty lines
+                continue
             }
             if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
-                if let match = sectionRegex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
-                    let section = (trimmed as NSString).substring(with: match.range(at: 1))
-                    if match.range(at: 2).location != NSNotFound {
-                        let subsection = (trimmed as NSString).substring(with: match.range(at: 2))
-                        currentSection = "\(section).\(subsection)"
-                    } else {
-                        currentSection = section
+                // Save previous section before moving on
+                if let section = currentSection {
+                    if !currentDict.isEmpty {
+                        sections[section] = .dictionary(currentDict)
+                    } else if !currentValues.isEmpty {
+                        sections[section] = .array(currentValues)
                     }
                 }
+                // Start new section
+                currentSection = String(trimmed.dropFirst().dropLast())
+                currentValues = []
+                currentDict = [:]
             } else if let equalIndex = trimmed.firstIndex(of: "=") {
                 let key = trimmed[..<equalIndex].trimmingCharacters(in: .whitespaces)
                 let value = trimmed[trimmed.index(after: equalIndex)...].trimmingCharacters(in: .whitespaces)
-                let dictKey = currentSection.isEmpty ? key : "\(currentSection).\(key)"
-                result[dictKey] = value
+                currentDict[key] = value
+            } else if !trimmed.isEmpty {
+                currentValues.append(trimmed)
             }
         }
-        return result
+        // Don't forget the last section
+        if let section = currentSection {
+            if !currentDict.isEmpty {
+                sections[section] = .dictionary(currentDict)
+            } else if !currentValues.isEmpty {
+                sections[section] = .array(currentValues)
+            }
+        }
+
+        return Config(sections: sections)
     }
 }
