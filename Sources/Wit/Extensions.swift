@@ -2,16 +2,18 @@ import Foundation
 
 extension FileManager {
 
+    /// Creates a directory if it doesn't already exist.
     func mkdir(_ url: URL) throws {
         guard !fileExists(atPath: url.path) else { return }
         let directoryURL = url.hasDirectoryPath ? url : url.deletingLastPathComponent()
         try createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
-    func touch(_ url: URL) throws {
+    /// Creates a file if it doesn't already exist, even if the given content is nil.
+    func touch(_ url: URL, contents: String? = nil) throws {
         guard !fileExists(atPath: url.path) else { return }
         try mkdir(url)
-        createFile(atPath: url.path, contents: nil)
+        createFile(atPath: url.path, contents: contents?.data(using: .utf8))
     }
 }
 

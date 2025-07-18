@@ -5,11 +5,13 @@ import CryptoKit
 private let logger = Logger(subsystem: "Repo", category: "Wit")
 
 public final class Repo {
-    static let defaultPath = ".wild"
-    static let defaultConfigPath = "\(defaultPath)/config"
-    static let defaultObjectsPath = "\(defaultPath)/objects"
-    static let defaultHeadPath = "\(defaultPath)/HEAD"
-    static let defaultLogsPath = "\(defaultPath)/logs"
+    public static let defaultPath = ".wild"
+    public static let defaultConfigPath = "\(defaultPath)/config"
+    public static let defaultObjectsPath = "\(defaultPath)/objects"
+    public static let defaultHeadPath = "\(defaultPath)/HEAD"
+    public static let defaultLogsPath = "\(defaultPath)/logs"
+    public static let defaultIgnorePath = ".ignore"
+    public static let defaultFlagsPath = ".flags"
 
     public enum Error: Swift.Error {
         case missingHEAD
@@ -30,6 +32,7 @@ public final class Repo {
     var disk: Remote
     var objects: Objects
     var privateKey: Remote.PrivateKey?
+    var ignores: [String] = [".DS_Store", ".wild"]
 
     public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
         self.diskURL = URL.documentsDirectory.appending(path: path)
@@ -76,6 +79,21 @@ public final class Repo {
         }
         try await write(remoteHead, path: Self.defaultHeadPath)
 
+        // Copy necessary files
+        for path in [
+            Self.defaultConfigPath,
+            Self.defaultLogsPath,
+            Self.defaultIgnorePath,
+            Self.defaultFlagsPath,
+        ] {
+            if let data = try? await remote.get(path: path) {
+                try await write(data, path: path)
+            }
+        }
+
+        // Cache ignores
+        self.ignores = await retrieveIgnores() ?? ignores
+
         // Copy remote objects
         let remoteHashes = try await remoteObjects.retrieveHashes(remoteHead)
         for hash in remoteHashes {
@@ -85,16 +103,6 @@ public final class Repo {
             let path = objects.hashPath(hash)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
-        }
-
-        // Copy remote config
-        if let remoteConfig = try? await remote.get(path: Self.defaultConfigPath) {
-            try await write(remoteConfig, path: Self.defaultConfigPath)
-        }
-
-        // Copy remote logs
-        if let remoteLogs = try? await remote.get(path: Self.defaultLogsPath) {
-            try await write(remoteLogs, path: Self.defaultLogsPath)
         }
 
         if bare { return }
@@ -436,9 +444,17 @@ extension Repo {
         return String(data: data, encoding: .utf8)
     }
 
+    func retrieveIgnores() async -> [String]? {
+        guard let data = try? await read(Self.defaultIgnorePath) else {
+            return nil
+        }
+        let ignores = String(data: data, encoding: .utf8)
+        return ignores?.split(separator: "\n").map(String.init)
+    }
+
     /// Returns a dictionary of file references for files in the working directory keyed with their path, ignoring any ignored files.
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
-        let files = try await disk.list(path: path)
+        let files = try await disk.list(path: path, ignores: ignores)
         var out: [String: File] = [:]
         for (relativePath, url) in files {
             if let hash = try? objects.hash(for: url) {
@@ -546,8 +562,16 @@ extension Repo {
         let contents = try FileManager.default.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
         )
+
+        let shouldIgnore: (String, [String]) -> Bool = { path, ignores in
+            for ignore in ignores {
+                if path.hasPrefix(ignore) {
+                    return true
+                }
+            }
+            return false
+        }
 
         for item in contents {
             let filename = item.lastPathComponent
@@ -555,6 +579,8 @@ extension Repo {
             let isRegularFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
             let isSymbolicLink = (try? item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
             let relativePath = directory.isEmpty ? filename : "\(directory)/\(filename)"
+
+            guard !shouldIgnore(relativePath, ignores) else { continue }
 
             if isDirectory {
                 // Recursively build or reuse subtree
@@ -701,7 +727,7 @@ extension Repo {
     private func updateWorkingDirectory(to commitHash: String) async throws {
         // Clear current working directory (except .wild)
         let contents = try FileManager.default.contentsOfDirectory(at: diskURL, includingPropertiesForKeys: nil)
-        for item in contents where item.lastPathComponent != ".wild" {
+        for item in contents where !ignores.contains(item.lastPathComponent) {
             try FileManager.default.removeItem(at: item)
         }
 

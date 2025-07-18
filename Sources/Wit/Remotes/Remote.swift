@@ -8,7 +8,7 @@ public protocol Remote {
     func get(path: String) async throws -> Data
     func put(path: String, data: Data, mimetype: String?, privateKey: PrivateKey?) async throws
     func delete(path: String, privateKey: PrivateKey?) async throws
-    func list(path: String) async throws -> [String: URL]
+    func list(path: String, ignores: [String]) async throws -> [String: URL]
 }
 
 public enum RemoteError: Swift.Error, CustomStringConvertible {
