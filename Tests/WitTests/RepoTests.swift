@@ -14,6 +14,7 @@ final class RepoTests {
         defer { RemoveDirectory(pathB) }
 
         // RepoA first two commits
+        try await repoA.initialize()
         let repoA_Commit1_Hash = try await CommitFile(repoA, path: "Documents/foo.txt")
         let repoA_Commit2_Hash = try await CommitFile(repoA, path: "Documents/bar.txt")
         #expect(repoA_Commit1_Hash != repoA_Commit2_Hash)
@@ -46,6 +47,7 @@ final class RepoTests {
         defer { RemoveDirectory(pathB) }
 
         // RepoA → Commit 1
+        try await repoA.initialize()
         let repoA_Commit1_Hash = try await CommitFile(repoA, path: "foo.txt")
 
         // RepoB clone RepoA
@@ -76,6 +78,7 @@ final class RepoTests {
         let (path, repo) = NewRepo()
         defer { RemoveDirectory(path) }
 
+        try await repo.initialize()
         try await repo.write("This is some foo", path: "Documents/foo.txt")
         try await repo.write("This is some bar", path: "Documents/bar.txt")
 
@@ -97,6 +100,7 @@ final class RepoTests {
         let (path, repo) = NewRepo()
         defer { RemoveDirectory(path) }
 
+        try await repo.initialize()
         let commit1_Hash = try await CommitFile(repo, path: "Documents/foo.txt", message: "Initial commit")
         #expect(commit1_Hash.isEmpty == false)
         #expect(try await repo.objects.exists(commit1_Hash) == true)
