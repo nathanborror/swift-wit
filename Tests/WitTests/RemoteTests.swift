@@ -26,15 +26,15 @@ final class RemoteTests {
         try await client.config(
             path: Repo.defaultConfigPath,
             values: [
-                "core": [
+                "core": .dictionary([
                     "publicKey": publicKey
-                ],
-                "user": [
+                ]),
+                "user": .dictionary([
                     "id": workingPath,
                     "name": "Alice",
                     "email": "alice@example.com",
                     "username": "alice",
-                ],
+                ]),
             ]
         )
 

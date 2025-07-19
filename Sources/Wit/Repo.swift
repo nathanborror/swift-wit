@@ -124,7 +124,7 @@ public final class Repo {
         try manager.mkdir(diskURL/".wild"/"remotes"/"origin")
 
         // Set current version
-        try await config(path: Self.defaultConfigPath, values: ["core": ["version": "1.0"]], remote: remote)
+        try await config(path: Self.defaultConfigPath, values: ["core": .dictionary(["version": "1.0"])], remote: remote)
 
         // Cache ignores
         self.ignores = await retrieveIgnores() ?? ignores
@@ -411,15 +411,18 @@ public final class Repo {
     }
 
     /// Writes the given values to the config file and optionally uploads it to the given remote.
-    public func config(path: String, values: [String: [String: String]], remote: Remote? = nil) async throws {
+    public func config(path: String, values: [String: Section], remote: Remote? = nil) async throws {
         let config = try await config(path: path)
         var mergedSections = config.sections
 
-        for (section, newValues) in values {
-            if case .dictionary(let oldDict) = mergedSections[section] {
-                mergedSections[section] = .dictionary(oldDict.merging(newValues) { _, new in new })
-            } else {
-                mergedSections[section] = .dictionary(newValues)
+        for (section, newSection) in values {
+            switch (mergedSections[section], newSection) {
+            case (.dictionary(let oldDict), .dictionary(let newDict)):
+                // Merge dictionaries, prefer new values
+                mergedSections[section] = .dictionary(oldDict.merging(newDict) { _, new in new })
+            default:
+                // For arrays, or replacing an existing section of a different type, just set it
+                mergedSections[section] = newSection
             }
         }
 
