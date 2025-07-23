@@ -21,7 +21,7 @@ final class RepoTests {
 
         // RepoB clone
         try await repoB.clone(repoA.disk)
-        let repoB_HEAD = await repoB.retrieveHEAD()!
+        let repoB_HEAD = await repoB.HEAD()!
         let repoB_HEAD_Commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
         let repoB_HEAD_Commit_Tree = try await repoB.objects.retrieve(repoB_HEAD_Commit.tree, as: Tree.self)
         #expect(repoB_HEAD == repoA_Commit2_Hash)
@@ -35,7 +35,7 @@ final class RepoTests {
 
         // RepoB push to RepoA
         try await repoB.push(repoA.disk)
-        #expect(await repoA.retrieveHEAD() == repoB_Commit3_Hash)
+        #expect(await repoA.HEAD() == repoB_Commit3_Hash)
     }
 
     @Test("Rebase")
@@ -52,7 +52,7 @@ final class RepoTests {
 
         // RepoB clone RepoA
         try await repoB.clone(repoA.disk)
-        #expect(await repoB.retrieveHEAD() == repoA_Commit1_Hash)
+        #expect(await repoB.HEAD() == repoA_Commit1_Hash)
 
         // RepoA → Commit 2
         let repoA_Commit2_Hash = try await CommitFile(repoA, path: "bar.txt")
@@ -105,7 +105,7 @@ final class RepoTests {
         #expect(commit1_Hash.isEmpty == false)
         #expect(try await repo.objects.exists(commit1_Hash) == true)
 
-        let head = await repo.retrieveHEAD()
+        let head = await repo.HEAD()
         #expect(head == commit1_Hash)
 
         let commit1 = try await repo.objects.retrieve(commit1_Hash, as: Commit.self)

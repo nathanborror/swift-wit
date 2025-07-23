@@ -90,7 +90,7 @@ final class RemoteTests {
         try await newClient.fetch(remote)
 
         // HEAD should not have changed with fetch
-        let head = await newClient.retrieveHEAD()
+        let head = await newClient.HEAD()
         #expect(head == firstCommitHash)
 
         // TODO: Check locally cached remote data
@@ -118,7 +118,7 @@ final class RemoteTests {
         let newClient = Repo(path: workingPath, privateKey: privateKey)
         let _ = try await newClient.rebase(remote)
 
-        let head = await newClient.retrieveHEAD()
+        let head = await newClient.HEAD()
         //#expect(head != firstCommitHash) TODO: Fix this
         #expect(head != secondCommitHash)
     }
