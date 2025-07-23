@@ -57,6 +57,7 @@ public actor RemoteDisk: Remote {
             let enumerator = FileManager.default.enumerator(
                 at: url,
                 includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsPackageDescendants]
             )
             while let fileURL = enumerator?.nextObject() as? URL {
                 let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")

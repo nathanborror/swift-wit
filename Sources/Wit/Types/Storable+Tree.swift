@@ -4,10 +4,12 @@ public struct Tree: Storable, Codable, Sendable {
     public var kind = Envelope.Kind.tree
     public var entries: [Entry]
 
-    public struct Entry: Codable, Sendable {
+    public struct Entry: Codable, Identifiable, Sendable {
         public var mode: Mode
         public var name: String
         public var hash: String
+
+        public var id: String { hash+name }
 
         public enum Mode: String, Codable, Sendable {
             case normal = "100644"

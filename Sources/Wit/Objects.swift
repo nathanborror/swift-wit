@@ -134,7 +134,7 @@ public final class Objects {
         return out
     }
 
-    /// Returns a set of hashes that are referenced by a given commit 
+    /// Returns a set of hashes that are referenced by a given commit
     public func retrieveHashes(_ hash: String) async throws -> Set<String> {
         var seen = Set<String>()
         var stack: [String] = [hash]

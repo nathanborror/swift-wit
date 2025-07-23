@@ -16,6 +16,7 @@ public final class Repo {
     public enum Error: Swift.Error {
         case missingHEAD
         case missingCommonAncestor
+        case missingHash
     }
 
     public enum Ref {
@@ -44,6 +45,23 @@ public final class Repo {
         )
     }
 
+    // MARK: Convenience
+
+    public func commit(ref: Ref = .head) async throws -> (String, Commit) {
+        let hash = try await retrieveHash(ref: ref)
+        let commit = try await objects.retrieve(hash, as: Commit.self)
+        return (hash, commit)
+    }
+
+    public func tree(hash: String) async throws -> (String, Tree) {
+        let tree = try await objects.retrieve(hash, as: Tree.self)
+        return (hash, tree)
+    }
+
+    public func envelope(hash: String) async throws -> Envelope {
+        try await objects.retrieve(hash)
+    }
+
     // MARK: Working with files
 
     public func read(_ path: String) async throws -> Data {
@@ -61,6 +79,16 @@ public final class Repo {
 
     public func delete(_ path: String) async throws {
         try await disk.delete(path: path, privateKey: privateKey)
+    }
+
+    public func exists(_ path: String) -> Bool {
+        FileManager.default.fileExists(atPath: diskURL.appending(path: path).path)
+    }
+
+    public func existsAsDirectory(_ path: String) -> Bool {
+        var isDir: ObjCBool = false
+        let _ = FileManager.default.fileExists(atPath: diskURL.appending(path: path).path, isDirectory: &isDir)
+        return isDir.boolValue
     }
 
     // MARK: Start a working area
@@ -134,20 +162,15 @@ public final class Repo {
 
     /// Show the working tree status.
     public func status(_ ref: Ref = .head) async throws -> [File] {
-        var commitHash: String?
-        switch ref {
-        case .head:
-            commitHash = await retrieveHEAD()
-        case .commit(let hash):
-            commitHash = hash
-        }
 
         // Gather file references within the commit
-        var fileReferences: [String: File] = [:]
-        if let commitHash {
+        let fileReferences: [String: File]
+        if let commitHash = try? await retrieveHash(ref: ref) {
             let commit = try await objects.retrieve(commitHash, as: Commit.self)
             let tree = try await objects.retrieve(commit.tree, as: Tree.self)
             fileReferences = try await objects.retrieveFileReferencesRecursive(tree)
+        } else {
+            fileReferences = [:]
         }
 
         // Gather file references within the working directory
@@ -184,7 +207,7 @@ public final class Repo {
 
     /// Record changes to the repository.
     public func commit(_ message: String) async throws -> String {
-        let head = await retrieveHEAD()
+        let head = await HEAD()
         var files = try await status()
 
         // Store blobs, generate hashes and update the file references before building new tree structure
@@ -228,7 +251,7 @@ public final class Repo {
     public func rebase(_ remote: Remote) async throws -> String {
         try await fetch(remote)
 
-        let head = await retrieveHEAD()
+        let head = await HEAD()
         let remoteHeadData = try await read(".wild/remotes/origin/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
 
@@ -321,7 +344,7 @@ public final class Repo {
 
     /// Update remote along with associated objects.
     public func push(_ remote: Remote) async throws {
-        guard let head = await retrieveHEAD() else {
+        guard let head = await HEAD() else {
             print("Nothing to push: local HEAD not set")
             return
         }
@@ -348,7 +371,7 @@ public final class Repo {
         }
 
         // Update remote HEAD, log
-        if let currentHead = await retrieveHEAD() {
+        if let currentHead = await HEAD() {
             try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
         }
         if let currentLogs = await retrieveLogFile() {
@@ -378,7 +401,7 @@ public final class Repo {
         try await write(remoteHeadData, path: ".wild/remotes/origin/HEAD")
 
         // Local head
-        let head = await retrieveHEAD()
+        let head = await HEAD()
 
         // Compare heads
         guard !remoteHead.isEmpty, head != remoteHead else { return }
@@ -412,8 +435,8 @@ public final class Repo {
 
     /// Writes the given values to the config file and optionally uploads it to the given remote.
     public func config(path: String, values: [String: Section], remote: Remote? = nil) async throws {
-        let config = try await config(path: path)
-        var mergedSections = config.sections
+        let config = try? await config(path: path)
+        var mergedSections = config?.sections ?? [:]
 
         for (section, newSection) in values {
             switch (mergedSections[section], newSection) {
@@ -428,19 +451,15 @@ public final class Repo {
 
         let newConfig = ConfigEncoder().encode(mergedSections)
         let newConfigData = newConfig.data(using: .utf8)!
-        try await disk.put(path: Self.defaultConfigPath, data: newConfigData, mimetype: nil, privateKey: nil)
+        try await disk.put(path: path, data: newConfigData, mimetype: nil, privateKey: nil)
         if let remote {
-            try await remote.put(path: Self.defaultConfigPath, data: newConfigData, mimetype: nil, privateKey: privateKey)
+            try await remote.put(path: path, data: newConfigData, mimetype: nil, privateKey: privateKey)
         }
     }
-}
 
-// MARK: - Private
+    // MARK: HEAD
 
-extension Repo {
-
-    /// Returns the current HEAD or an empty string if the file is empty.
-    func retrieveHEAD() async -> String? {
+    public func HEAD() async -> String? {
         guard let data = try? await read(Self.defaultHeadPath) else {
             return nil
         }
@@ -449,8 +468,24 @@ extension Repo {
         }
         return nil
     }
+}
 
-    /// Returns the full contents of a log file as a string.
+// MARK: - Private
+
+extension Repo {
+
+    func retrieveHash(ref: Ref) async throws -> String {
+        switch ref {
+        case .head:
+            guard let hash = await HEAD() else {
+                throw Error.missingHash
+            }
+            return hash
+        case .commit(let hash):
+            return hash
+        }
+    }
+
     func retrieveLogFile() async -> String? {
         guard let data = try? await read(Self.defaultLogsPath) else {
             return nil
