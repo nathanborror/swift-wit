@@ -5,7 +5,7 @@
 ██ ███ ██ ██    ██
  ███ ███  ██    ██
 
-The Wild Information Tracker (Wit) is a content addressable storage tool for managing files within a Wild instance. It's inspired by Linus Torvalds' Git.
+The Wild Information Tracker (WIT) is a content addressable storage tool for managing files within a Wild instance. It's inspired by Linus Torvalds' Git.
 
 Requirements:
 
@@ -13,7 +13,7 @@ Requirements:
 - iOS 18+
 - macOS 15+
 
-Config file:
+Config file maintains stable information about a user and their remotes:
 
     [core]
         version = 1.0
@@ -26,7 +26,7 @@ Config file:
     [remote "origin"]
         url = http://localhost:8080/USER_ID
 
-Directory structure:
+Common directory structure is similar to Git. The objects folder is designed to work in a custom location to take advantage of a larger pool of storage:
 
     ~/
     └ <WORKING_DIR>/
@@ -40,6 +40,20 @@ Directory structure:
             ├ HEAD
             └ logs
 
+The command-line tool will operate similar to IRC's line delimited interface:
+
+    > PULL
+    > WRITE foo.txt :This is my foo file
+    > WRITE bar.txt :This is my bar file
+    > RM baz.txt
+    > COMMIT :Updates for the day
+    > PUSH origin/main
+    > CONFIG SET user.name :Vint Cerf
+    > CONFIG SET user.email :vint@example.com
+    > CONFIG LS
+    > CONFIG CAT user.email
+    > LS
+
 Tasks:
 
 - [x] Test object store for duplicate creation
@@ -47,30 +61,12 @@ Tasks:
 - [x] Test workflow for fine-grained tree changes
 - [x] Object store needs custom url so it can store files globally to save space
 - [x] Add memcache to RemoteDisk
-- [x] Logs should be IRC-like (e.g. `<datetime> COMMIT <hash> <parent> <tree> <kind> <filename> <mimetype?> :<message>`)
+- [x] Logs should be IRC-like
 - [x] Config parser
 - [x] Rename `Reference` to `File`
-- [ ] Fix rebase
-- [ ] Add flags to Commit object
+- [x] Add .flags
 - [x] Log parser
-- [ ] Build working directory for authenticated user
-
-Client:
-
-The client is designed to be a self sustaining interface to a specific repository.
-
-It offers a high-level line delimited interface similar to IRC.
-
-Example owner usage:
-
-    PULL
-    WRITE foo.txt :This is my foo file
-    WRITE bar.txt :This is my bar file
-    RM baz.txt
-    COMMIT :Updates for the day
-    PUSH origin/main
-    CONFIG SET user.name :Vint Cerf
-    CONFIG SET user.email :vint@example.com
-    CONFIG LS
-    CONFIG CAT user.email
-    LS
+- [x] Build working directory for authenticated user
+- [ ] Fix rebase
+- [ ] Add three way merging
+- [ ] Use [remotes] section in config
