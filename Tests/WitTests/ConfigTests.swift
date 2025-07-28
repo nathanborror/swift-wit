@@ -36,4 +36,21 @@ final class ConfigTests {
         let encoded = ConfigEncoder().encode(config)
         #expect(encoded == expecting)
     }
+
+    @Test("Lists")
+    func lists() {
+        let input = """
+            [pins]
+                README.md
+                Documents/PLAN.txt
+            [user]
+                name = Test User
+            """
+
+        let config = ConfigDecoder().decode(input)
+        guard case .array(let items) = config[section: "pins"] else {
+            fatalError("missing items")
+        }
+        #expect(items.count == 2)
+    }
 }
