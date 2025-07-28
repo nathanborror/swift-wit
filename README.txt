@@ -53,20 +53,3 @@ The command-line tool will operate similar to IRC's line delimited interface:
     > CONFIG LS
     > CONFIG CAT user.email
     > LS
-
-Tasks:
-
-- [x] Test object store for duplicate creation
-- [x] Test workflow for duplicate tree creation
-- [x] Test workflow for fine-grained tree changes
-- [x] Object store needs custom url so it can store files globally to save space
-- [x] Add memcache to RemoteDisk
-- [x] Logs should be IRC-like
-- [x] Config parser
-- [x] Rename `Reference` to `File`
-- [x] Add .flags
-- [x] Log parser
-- [x] Build working directory for authenticated user
-- [ ] Fix rebase
-- [ ] Add three way merging
-- [ ] Use [remotes] section in config
