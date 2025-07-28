@@ -1,13 +1,13 @@
 import Foundation
 
 public struct Tree: Storable, Codable, Sendable {
-    public var kind = Envelope.Kind.tree
-    public var entries: [Entry]
+    public let kind: Envelope.Kind
+    public let entries: [Entry]
 
     public struct Entry: Codable, Identifiable, Sendable {
-        public var mode: Mode
-        public var name: String
-        public var hash: String
+        public let mode: Mode
+        public let name: String
+        public let hash: String
 
         public var id: String { hash+name }
 
@@ -20,6 +20,7 @@ public struct Tree: Storable, Codable, Sendable {
     }
 
     public init(entries: [Entry]) {
+        self.kind = .tree
         self.entries = entries
     }
 
@@ -30,8 +31,8 @@ public struct Tree: Storable, Codable, Sendable {
     }
 
     public func encode() throws -> Data {
-        var tree = self
-        tree.entries.sort { $0.name < $1.name }
+        let entries = self.entries.sorted { $0.name < $1.name }
+        let tree = Tree(entries: entries)
         return try StorableEncoder.encode(tree)
     }
 }

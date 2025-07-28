@@ -5,16 +5,17 @@ import CryptoKit
 
 private let logger = Logger(subsystem: "ObjectStore", category: "Wit")
 
-public final class Objects {
+public actor Objects {
+
+    public enum Error: Swift.Error {
+        case invalidObjectFormat
+    }
+
     public let remote: Remote
 
     private let objectsPath: String
     private let compressionThreshold: Int
     private let useCompression: Bool
-
-    public enum Error: Swift.Error {
-        case invalidObjectFormat
-    }
 
     public init(remote: Remote, objectsPath: String, compressionThreshold: Int = 1024, useCompression: Bool = true) {
         self.remote = remote
@@ -48,7 +49,7 @@ public final class Objects {
         storedData.append(isCompressed ? 0x01 : 0x00)
         storedData.append(objectData)
 
-        try await remote.put(path: objectPath, data: storedData, mimetype: nil, privateKey: privateKey)
+        try await remote.put(path: objectPath, data: storedData, directoryHint: .notDirectory, privateKey: privateKey)
         return objectHash
     }
 

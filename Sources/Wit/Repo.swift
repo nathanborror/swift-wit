@@ -4,7 +4,7 @@ import CryptoKit
 
 private let logger = Logger(subsystem: "Repo", category: "Wit")
 
-public final class Repo {
+public actor Repo {
     public static let defaultPath = ".wild"
     public static let defaultConfigPath = "\(defaultPath)/config"
     public static let defaultObjectsPath = "\(defaultPath)/objects"
@@ -19,21 +19,15 @@ public final class Repo {
         case missingHash
     }
 
-    public enum Ref {
+    public enum Ref: Sendable {
         case head
         case commit(String)
     }
 
-    public enum Author {
-        case current
-        case name(String)
-    }
-
-    var diskURL: URL
-    var disk: Remote
-    var objects: Objects
-    var privateKey: Remote.PrivateKey?
-    var ignores: [String] = [".DS_Store", ".wild"]
+    let diskURL: URL
+    let disk: any Remote
+    let objects: Objects
+    let privateKey: Remote.PrivateKey?
 
     public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
         self.diskURL = URL.documentsDirectory.appending(path: path)
@@ -69,12 +63,16 @@ public final class Repo {
     }
 
     public func write(_ string: String?, path: String) async throws {
-        try await write(string?.data(using: .utf8), path: path)
+        guard let string else { return }
+        try await write(string.data(using: .utf8), path: path)
     }
 
-    public func write(_ data: Data?, path: String) async throws {
-        guard let data else { return }
-        try await disk.put(path: path, data: data, mimetype: nil, privateKey: privateKey)
+    public func write(_ data: Data?, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
+        try await disk.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
+    }
+
+    public func move(_ path: String, to toPath: String) async throws {
+        try await disk.move(path: path, to: toPath)
     }
 
     public func delete(_ path: String) async throws {
@@ -119,16 +117,13 @@ public final class Repo {
             }
         }
 
-        // Cache ignores
-        self.ignores = await retrieveIgnores() ?? ignores
-
         // Copy remote objects
         let remoteHashes = try await remoteObjects.retrieveHashes(remoteHead)
         for hash in remoteHashes {
             guard try await !objects.exists(hash) else {
                 continue
             }
-            let path = objects.hashPath(hash)
+            let path = await objects.hashPath(hash)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
         }
@@ -153,9 +148,6 @@ public final class Repo {
 
         // Set current version
         try await config(path: Self.defaultConfigPath, values: ["core": .dictionary(["version": "1.0"])], remote: remote)
-
-        // Cache ignores
-        self.ignores = await retrieveIgnores() ?? ignores
     }
 
     // MARK: Examine history and state
@@ -181,23 +173,22 @@ public final class Repo {
         for (path, file) in fileReferencesCurrent {
             if let previousRef = fileReferences[path] {
                 if previousRef.hash != file.hash {
-                    out.append(file.apply(kind: .modified))
+                    out.append(file.apply(state: .modified, previousHash: previousRef.hash))
                 }
             } else {
-                out.append(file.apply(kind: .added))
+                out.append(file.apply(state: .added, previousHash: nil))
             }
         }
 
         // Find deletions
         for (path, file) in fileReferences where fileReferencesCurrent[path] == nil {
-            out.append(file.apply(kind: .deleted))
+            out.append(file.apply(state: .deleted, previousHash: nil))
         }
         return out
     }
 
-    /// Show commit logs.
-    public func log() async throws -> [Log] {
-        guard let contents = await retrieveLogFile() else {
+    public func logs() async throws -> [Log] {
+        guard let contents = await retrieveCommitLogFile() else {
             return []
         }
         return contents.split(separator: "\n").map(String.init).map { LogDecoder().decode($0) }
@@ -206,6 +197,7 @@ public final class Repo {
     // MARK: Grow and tweak common history
 
     /// Record changes to the repository.
+    @discardableResult
     public func commit(_ message: String) async throws -> String {
         let head = await HEAD()
         var files = try await status()
@@ -372,10 +364,10 @@ public final class Repo {
 
         // Update remote HEAD, log
         if let currentHead = await HEAD() {
-            try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+            try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, directoryHint: .notDirectory, privateKey: privateKey)
         }
-        if let currentLogs = await retrieveLogFile() {
-            try await remote.put(path: Self.defaultLogsPath, data: currentLogs.data(using: .utf8)!, mimetype: nil, privateKey: privateKey)
+        if let commitLogs = await retrieveCommitLogFile() {
+            try await remote.put(path: Self.defaultLogsPath, data: commitLogs.data(using: .utf8)!, directoryHint: .notDirectory, privateKey: privateKey)
         }
 
         // Finished
@@ -413,14 +405,17 @@ public final class Repo {
             guard try await !objects.exists(hash) else {
                 continue
             }
-            let path = objects.hashPath(hash)
+            let path = await objects.hashPath(hash)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
         }
 
         // Download remote logs
-        if let remoteLogs = try? await remote.get(path: Self.defaultLogsPath) {
-            try await write(remoteLogs, path: ".wild/remotes/origin/logs")
+        if let remoteCommitLogs = try? await remote.get(path: Self.defaultLogsPath) {
+            try await write(remoteCommitLogs, path: ".wild/remotes/origin/logs/commits")
+        }
+        if let remoteStatusLogs = try? await remote.get(path: Self.defaultLogsPath) {
+            try await write(remoteStatusLogs, path: ".wild/remotes/origin/logs/status")
         }
     }
 
@@ -451,9 +446,9 @@ public final class Repo {
 
         let newConfig = ConfigEncoder().encode(mergedSections)
         let newConfigData = newConfig.data(using: .utf8)!
-        try await disk.put(path: path, data: newConfigData, mimetype: nil, privateKey: nil)
+        try await disk.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: nil)
         if let remote {
-            try await remote.put(path: path, data: newConfigData, mimetype: nil, privateKey: privateKey)
+            try await remote.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: privateKey)
         }
     }
 
@@ -486,7 +481,7 @@ extension Repo {
         }
     }
 
-    func retrieveLogFile() async -> String? {
+    func retrieveCommitLogFile() async -> String? {
         guard let data = try? await read(Self.defaultLogsPath) else {
             return nil
         }
@@ -503,10 +498,11 @@ extension Repo {
 
     /// Returns a dictionary of file references for files in the working directory keyed with their path, ignoring any ignored files.
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
+        let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
         let files = try await disk.list(path: path, ignores: ignores)
         var out: [String: File] = [:]
         for (relativePath, url) in files {
-            if let hash = try? objects.hash(for: url) {
+            if let hash = try? await objects.hash(for: url) {
                 out[relativePath] = .init(path: relativePath, hash: hash, mode: .normal)
             }
         }
@@ -516,8 +512,13 @@ extension Repo {
     /// Encodes a Commit log message and appends it to the logs file.
     func log(commit: Commit, hash: String) async throws {
         let line = LogEncoder().encode(commit: commit, hash: hash) + "\n"
+        try log(path: Self.defaultLogsPath, append: line)
+    }
+
+    /// Appends line to given log file.
+    func log(path: String, append line: String) throws {
         guard let lineData = line.data(using: .utf8) else { return }
-        guard let fileHandle = FileHandle(forUpdatingAtPath: (diskURL/Self.defaultLogsPath).path) else {
+        guard let fileHandle = FileHandle(forUpdatingAtPath: (diskURL/path).path) else {
             print("Log Error: missing `\(Self.defaultLogsPath)` file")
             return
         }
@@ -602,9 +603,12 @@ extension Repo {
         // If this directory hasn't changed, reuse previous tree
         if changedSubitems[directory] == nil, let previousTree = previousTreeCache[directory] {
             let data = try previousTree.encode()
-            let header = objects.header(kind: previousTree.kind.rawValue, count: data.count)
-            return objects.hashCompute(header+data)
+            let header = await objects.header(kind: previousTree.kind.rawValue, count: data.count)
+            return await objects.hashCompute(header+data)
         }
+
+        // Files to ignore
+        let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
 
         var entries: [Tree.Entry] = []
         let directoryURL = directory.isEmpty ? diskURL : (diskURL/directory)
@@ -774,6 +778,8 @@ extension Repo {
     // TODO: Review generated code
     // Update working directory to match a specific commit
     private func updateWorkingDirectory(to commitHash: String) async throws {
+        let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
+
         // Clear current working directory (except .wild)
         let contents = try FileManager.default.contentsOfDirectory(at: diskURL, includingPropertiesForKeys: nil)
         for item in contents where !ignores.contains(item.lastPathComponent) {

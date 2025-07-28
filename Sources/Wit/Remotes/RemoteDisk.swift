@@ -29,17 +29,29 @@ public actor RemoteDisk: Remote {
         return data
     }
 
-    public func put(path: String, data: Data, mimetype: String?, privateKey: PrivateKey?) async throws {
-        let url = baseURL/path
-        try FileManager.default.mkdir(url)
-        try data.write(to: url, options: .atomic)
-        cache[path] = data
+    public func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+        let url = baseURL.appending(path: path, directoryHint: directoryHint)
+        if directoryHint == .isDirectory {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        } else {
+            let data = data ?? Data()
+            try FileManager.default.mkdir(url)
+            try data.write(to: url, options: .atomic)
+            cache[path] = data
+        }
     }
 
     public func delete(path: String, privateKey: PrivateKey?) async throws {
         let url = baseURL/path
         try? FileManager.default.removeItem(at: url)
         cache.removeValue(forKey: path)
+    }
+
+    public func move(path: String, to toPath: String) async throws {
+        let atURL = baseURL/path
+        let toURL = baseURL/toPath
+        guard atURL != toURL else { return }
+        try FileManager.default.moveItem(at: atURL, to: toURL)
     }
 
     public func list(path: String, ignores: [String]) async throws -> [String: URL] {

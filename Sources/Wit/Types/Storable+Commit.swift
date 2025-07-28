@@ -1,13 +1,14 @@
 import Foundation
 
 public struct Commit: Storable, Codable, Sendable {
-    public var kind = Envelope.Kind.commit
-    public var tree: String
-    public var parent: String?
-    public var message: String
-    public var timestamp: Date
+    public let kind: Envelope.Kind
+    public let tree: String
+    public let parent: String?
+    public let message: String
+    public let timestamp: Date
 
     public init(tree: String, parent: String? = nil, message: String, timestamp: Date = .now) {
+        self.kind = .commit
         self.tree = tree
         self.parent = parent
         self.message = message
@@ -16,7 +17,7 @@ public struct Commit: Storable, Codable, Sendable {
 
     public init(data: Data) throws {
         let commit = try JSONDecoder().decode(Commit.self, from: data)
-        self.kind = commit.kind
+        self.kind = .commit
         self.tree = commit.tree
         self.parent = commit.parent
         self.message = commit.message

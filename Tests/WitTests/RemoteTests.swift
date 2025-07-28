@@ -3,7 +3,7 @@ import CryptoKit
 import Testing
 @testable import Wit
 
-let isServerRunning = true
+let isServerRunning = false
 
 @Suite("Remote Tests", .enabled(if: isServerRunning))
 final class RemoteTests {
@@ -41,7 +41,7 @@ final class RemoteTests {
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
         let configData = try await client.read(Repo.defaultConfigPath)
-        try await registerRemote.put(path: "register", data: configData, mimetype: nil, privateKey: nil)
+        try await registerRemote.put(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
     }
 
     deinit { teardown() }
@@ -50,7 +50,7 @@ final class RemoteTests {
         try? FileManager.default.removeItem(at: .documentsDirectory/workingPath)
         let privateKey = privateKey
         let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(workingPath)")!)
-        Task { try await remote.put(path: "unregister", data: Data(), mimetype: nil, privateKey: privateKey) }
+        Task { try await remote.put(path: "unregister", data: Data(), directoryHint: .notDirectory, privateKey: privateKey) }
     }
 
     @Test("Push")

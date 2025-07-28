@@ -125,11 +125,11 @@ final class ObjectsTests {
         try FileManager.default.mkdir(url)
         try content.write(to: url, atomically: true, encoding: .utf8)
 
-        let blobHeader = storage.header(kind: "blob", count: blob.content.count)
+        let blobHeader = await storage.header(kind: "blob", count: blob.content.count)
         let blobData = blobHeader + blob.content
-        let blobHash = storage.hashCompute(blobData)
+        let blobHash = await storage.hashCompute(blobData)
 
-        let memoryMappedHash = try storage.hash(for: url)
+        let memoryMappedHash = try await storage.hash(for: url)
         #expect(blobHash == memoryMappedHash)
     }
 }
