@@ -1,9 +1,9 @@
 
-██     ██
-██     ██ ██   ██
-██  █  ██    ██████
-██ ███ ██ ██   ██
- ███ ███  ██   ██
+██     ██ ██ ████████
+██     ██ ██    ██
+██  █  ██ ██    ██
+██ ███ ██ ██    ██
+ ███ ███  ██    ██
 
 The Wild Information Tracker (Wit) is a content addressable storage tool for managing files within a Wild instance. It's inspired by Linus Torvalds' Git.
 
@@ -11,7 +11,7 @@ Requirements:
 
 - Swift 6.1+
 - iOS 18+
-- macOS 15+  
+- macOS 15+
 
 Config file:
 
@@ -69,17 +69,8 @@ Example owner usage:
     RM baz.txt
     COMMIT :Updates for the day
     PUSH origin/main
-    CONFIG SET user.name :Nathan Borror
-    CONFIG SET user.email :nathan@example.com
+    CONFIG SET user.name :Vint Cerf
+    CONFIG SET user.email :vint@example.com
     CONFIG LS
     CONFIG CAT user.email
-    LS
-
-Example viewer:
-
-    CLONE https://localhost:8080/USER_ID
-    LS
-
-    PULL
-    LOG
     LS
