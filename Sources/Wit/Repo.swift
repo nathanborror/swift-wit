@@ -11,7 +11,6 @@ public actor Repo {
     public static let defaultHeadPath = "\(defaultPath)/HEAD"
     public static let defaultLogsPath = "\(defaultPath)/logs"
     public static let defaultIgnorePath = ".ignore"
-    public static let defaultFlagsPath = ".flags"
 
     public enum Error: Swift.Error {
         case missingHEAD
@@ -110,7 +109,6 @@ public actor Repo {
             Self.defaultConfigPath,
             Self.defaultLogsPath,
             Self.defaultIgnorePath,
-            Self.defaultFlagsPath,
         ] {
             if let data = try? await remote.get(path: path) {
                 try await write(data, path: path)
