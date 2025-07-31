@@ -23,7 +23,7 @@ final class RemoteTests {
 
         // Initialize
         try await client.initialize()
-        try await client.config(
+        try await client.configMerge(
             path: Repo.defaultConfigPath,
             values: [
                 "core": .dictionary([
@@ -125,7 +125,7 @@ final class RemoteTests {
 
     @Test("Config parsing")
     func configParsing() async throws {
-        let config = try await client.config(path: Repo.defaultConfigPath)
+        let config = try await client.configRead(path: Repo.defaultConfigPath)
         #expect(config["core.version"] == "1.0")
     }
 }

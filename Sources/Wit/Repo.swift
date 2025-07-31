@@ -145,7 +145,11 @@ public actor Repo {
         try manager.mkdir(diskURL/".wild"/"remotes"/"origin")
 
         // Set current version
-        try await config(path: Self.defaultConfigPath, values: ["core": .dictionary(["version": "1.0"])], remote: remote)
+        try await configMerge(
+            path: Self.defaultConfigPath,
+            values: ["core": .dictionary(["version": "1.0"])],
+            remote: remote
+        )
     }
 
     // MARK: Examine history and state
@@ -420,15 +424,15 @@ public actor Repo {
     // MARK: Configuration
 
     /// Returns the config file as a string dictionary.
-    public func config(path: String) async throws -> Config {
+    public func configRead(path: String) async throws -> Config {
         let configData = try await disk.get(path: path)
         let config = String(data: configData, encoding: .utf8) ?? ""
         return ConfigDecoder().decode(config)
     }
 
-    /// Writes the given values to the config file and optionally uploads it to the given remote.
-    public func config(path: String, values: [String: Section], remote: Remote? = nil) async throws {
-        let config = try? await config(path: path)
+    /// Merges in the given config values to the config file and optionally uploads the file to the given remote.
+    public func configMerge(path: String, values: [String: Section], remote: Remote? = nil) async throws {
+        let config = try? await configRead(path: path)
         var mergedSections = config?.sections ?? [:]
 
         for (section, newSection) in values {
@@ -442,7 +446,16 @@ public actor Repo {
             }
         }
 
-        let newConfig = ConfigEncoder().encode(mergedSections)
+        try await configWrite(
+            path: path,
+            values: mergedSections,
+            remote: remote
+        )
+    }
+
+    /// Writes the given config values to the config file and optionally uploads the file to the given remote.
+    public func configWrite(path: String, values: [String: Section], remote: Remote? = nil) async throws {
+        let newConfig = ConfigEncoder().encode(values)
         let newConfigData = newConfig.data(using: .utf8)!
         try await disk.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: nil)
         if let remote {
