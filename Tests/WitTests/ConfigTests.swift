@@ -68,4 +68,20 @@ final class ConfigTests {
         let encoded = ConfigEncoder().encode(config)
         #expect(encoded == expecting)
     }
+
+    @Test("Deleting values")
+    func deletingValues() {
+        let input = """
+            [core]
+                version = 1.0
+            [user]
+                name = "Test User"
+                email = test@example.com
+            """
+        var config = ConfigDecoder().decode(input)
+        config.remove(section: "user", key: "email")
+
+        #expect(config["user.name"] == "Test User")
+        #expect(config["user.email"] == nil)
+    }
 }

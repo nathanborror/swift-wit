@@ -6,7 +6,7 @@ public enum Section: Sendable {
 }
 
 public struct Config: Sendable {
-    public let sections: [String: Section]
+    public var sections: [String: Section]
 
     public subscript(section section: String) -> Section? {
         sections[section]
@@ -22,6 +22,22 @@ public struct Config: Sendable {
 
     public init(sections: [String: Section] = [:]) {
         self.sections = sections
+    }
+
+    public mutating func remove(section: String) {
+        sections.removeValue(forKey: section)
+    }
+
+    public mutating func remove(section: String, key: String) {
+        guard case var .dictionary(dict) = sections[section] else {
+            return
+        }
+        dict.removeValue(forKey: key)
+        if dict.isEmpty {
+            sections.removeValue(forKey: section)
+        } else {
+            sections[section] = .dictionary(dict)
+        }
     }
 }
 
