@@ -11,62 +11,58 @@ final class ConfigTests {
             [core]
                 version = 1.0
             [user]
-                name = "Test User"
+                name = Test User
+            [remote:local]
+                host = http://localhost:8080
+            [remote:example]
+                host = http://example.com
+            [files]
+                foo.md
+                bar.md
             """
 
         let config = ConfigDecoder().decode(input)
         #expect(config["core.version"] == "1.0")
         #expect(config["user.name"] == "Test User")
+        #expect(config["remote:local.host"] == "http://localhost:8080")
+        #expect(config[list: "files"]?.count == 2)
+        #expect(config[dict: "core"] == ["version": "1.0"])
+        #expect(config["files"] == "foo.md\nbar.md")
 
-        guard case .dictionary(let dict) = config[section: "core"] else {
-            fatalError("failed to extract dictionary")
-        }
-        #expect(dict == ["version": "1.0"])
+        let remotes = config[prefix: "remote"]
+        #expect(remotes.sections.count == 2)
+        #expect(remotes["local.host"] == "http://localhost:8080")
     }
 
     @Test("Encoding")
     func encoding() {
-        let expecting = """
-            [core]
-                version = 1.0
-            [user]
-                name = "Test User"
-            """
-
-        let config: [String: Section] = [
+        let input: [String: Config.Section] = [
             "core": .dictionary(["version": "1.0"]),
             "user": .dictionary(["name": "Test User"]),
-        ]
-
-        let encoded = ConfigEncoder().encode(config)
-        #expect(encoded == expecting)
-    }
-
-    @Test("Decoding keyed sections")
-    func decodingKeyedSections() {
-        let input = """
-            [remote "local"]
-                host = http://localhost:8080
-            """
-
-        let config = ConfigDecoder().decode(input)
-        print(config)
-        #expect(config["remote:local.host"] == "http://localhost:8080")
-    }
-
-    @Test("Encoding keyed sections")
-    func encodingKeyedSections() {
-        let expecting = """
-            [remote "local"]
-                host = http://localhost:8080
-            """
-
-        let config: [String: Section] = [
             "remote:local": .dictionary(["host": "http://localhost:8080"]),
+            "files": .array(["foo.md", "bar.md"]),
         ]
+        let encoded = ConfigEncoder().encode(input)
 
-        let encoded = ConfigEncoder().encode(config)
-        #expect(encoded == expecting)
+        let expected = """
+            [core]
+                version = 1.0
+            [files]
+                foo.md
+                bar.md
+            [remote:local]
+                host = http://localhost:8080
+            [user]
+                name = Test User
+            """
+        #expect(encoded == expected)
+
+        let config = ConfigDecoder().decode(encoded)
+        #expect(config["core.version"] == "1.0")
+        #expect(config["user.name"] == "Test User")
+        #expect(config["remote:local.host"] == "http://localhost:8080")
+        #expect(config[list: "files"]?.count == 2)
+        #expect(config[dict: "core"] == ["version": "1.0"])
     }
 
     @Test("Deleting values")
@@ -75,7 +71,7 @@ final class ConfigTests {
             [core]
                 version = 1.0
             [user]
-                name = "Test User"
+                name = Test User
                 email = test@example.com
             """
         var config = ConfigDecoder().decode(input)

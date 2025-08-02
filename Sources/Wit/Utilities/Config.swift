@@ -1,21 +1,63 @@
 import Foundation
 
-public enum Section: Sendable {
-    case dictionary([String: String])
-    case array([String])
-}
-
+/// A minimal human readable configuration file format. There can be sections with keyed values or just a list of values. Sections can be prefixed with a
+/// namespace. Here is an example:
+///
+///     [core]
+///         version = 1.0
+///     [user]
+///         name = Nathan Borror
+///     [remote:origin]
+///         url = http://localhost:8080
+///     [remote:github]
+///         url = http://github.com/nathanborror/swift-wit
+///     [favorites]
+///         foo.md
+///         bar.md
+///
 public struct Config: Sendable {
     public var sections: [String: Section]
+
+    public enum Section: Sendable {
+        case dictionary([String: String])
+        case array([String])
+    }
 
     public subscript(section section: String) -> Section? {
         sections[section]
     }
 
-    // TODO: Review generated code
+    public subscript(list section: String) -> [String]? {
+        guard case .array(let items) = sections[section] else {
+            return nil
+        }
+        return items
+    }
+
+    public subscript(dict section: String) -> [String: String]? {
+        guard case .dictionary(let dict) = sections[section] else {
+            return nil
+        }
+        return dict
+    }
+
+    public subscript(prefix prefix: String) -> Config {
+        var sections = Dictionary(uniqueKeysWithValues: sections.filter { $0.key.hasPrefix(prefix) })
+        sections = sections.reduce(into: [:]) {
+            let key = $1.key.trimmingPrefix(prefix).trimmingPrefix(":")
+            return $0[String(key)] = $1.value
+        }
+        return .init(sections: sections)
+    }
+
     public subscript(key: String) -> String? {
         let parts = key.split(separator: ".", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return nil }
+        guard parts.count == 2 else {
+            if let section = sections[key] {
+                return ConfigEncoder().encode(section: section).joined(separator: "\n")
+            }
+            return nil
+        }
         guard case let .dictionary(dict) = sections[parts[0]] else { return nil }
         return dict[parts[1]]
     }
@@ -29,9 +71,7 @@ public struct Config: Sendable {
     }
 
     public mutating func remove(section: String, key: String) {
-        guard case var .dictionary(dict) = sections[section] else {
-            return
-        }
+        guard var dict = self[dict: section] else { return }
         dict.removeValue(forKey: key)
         if dict.isEmpty {
             sections.removeValue(forKey: section)
@@ -43,39 +83,25 @@ public struct Config: Sendable {
 
 struct ConfigEncoder {
 
-    // TODO: Review generated code
-    func encode(_ input: [String: Section]) -> String {
+    func encode(_ input: [String: Config.Section]) -> String {
         var lines: [String] = []
-        for section in input.keys.sorted() {
-            // Convert back from "section:label" to [section "label"] format
-            let headerString = formatSectionHeader(section)
-            lines.append("[\(headerString)]")
-            switch input[section]! {
-            case .dictionary(let dict):
-                for (key, value) in dict.sorted(by: { $0.key < $1.key }) {
-                    if !value.isEmpty {
-                        // Quote value if it contains spaces
-                        let quotedValue = value.contains(" ") ? "\"\(value)\"" : value
-                        lines.append("    \(key) = \(quotedValue)")
-                    }
-                }
-            case .array(let array):
-                for value in array {
-                    lines.append("    \(value)")
-                }
-            }
+        for key in input.keys.sorted() {
+            lines.append("[\(key)]")
+            let values = encode(section: input[key]!)
+            lines += values.map { "    \($0)" }
         }
         return lines.joined(separator: "\n")
     }
 
-    // TODO: Review generated code
-    private func formatSectionHeader(_ sectionKey: String) -> String {
-        // Convert "section:label" back to section "label" format
-        let parts = sectionKey.split(separator: ":", maxSplits: 1).map(String.init)
-        if parts.count == 2 {
-            return "\(parts[0]) \"\(parts[1])\""
+    func encode(section: Config.Section) -> [String] {
+        switch section {
+        case .dictionary(let dict):
+            return dict
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key) = \($0.value)" }
+        case .array(let items):
+            return items
         }
-        return sectionKey
     }
 }
 
@@ -83,7 +109,7 @@ struct ConfigDecoder {
 
     // TODO: Review generated code
     func decode(_ input: String) -> Config {
-        var sections: [String: Section] = [:]
+        var sections: [String: Config.Section] = [:]
         var currentSection: String?
         var currentValues: [String] = []
         var currentDict: [String: String] = [:]
@@ -102,17 +128,13 @@ struct ConfigDecoder {
                         sections[section] = .array(currentValues)
                     }
                 }
-                // Parse section header - handle both [section] and [section "label"]
-                let sectionContent = String(trimmed.dropFirst().dropLast())
-                currentSection = parseSectionHeader(sectionContent)
+                currentSection = String(trimmed.dropFirst().dropLast())
                 currentValues = []
                 currentDict = [:]
             } else if let equalIndex = trimmed.firstIndex(of: "=") {
                 let key = trimmed[..<equalIndex].trimmingCharacters(in: .whitespaces)
                 let value = trimmed[trimmed.index(after: equalIndex)...].trimmingCharacters(in: .whitespaces)
-                // Remove quotes if present
-                let unquotedValue = unquoteValue(value)
-                currentDict[key] = unquotedValue
+                currentDict[key] = value
             } else if !trimmed.isEmpty {
                 currentValues.append(trimmed)
             }
@@ -127,32 +149,5 @@ struct ConfigDecoder {
         }
 
         return Config(sections: sections)
-    }
-
-    // TODO: Review generated code
-    private func parseSectionHeader(_ header: String) -> String {
-        // Handle section headers like: remote "local" or just: core
-        let trimmed = header.trimmingCharacters(in: .whitespaces)
-
-        // Check if there's a quoted label
-        if let firstQuote = trimmed.firstIndex(of: "\""),
-           let lastQuote = trimmed.lastIndex(of: "\""),
-           firstQuote < lastQuote {
-            let beforeQuote = trimmed[..<firstQuote].trimmingCharacters(in: .whitespaces)
-            let label = trimmed[trimmed.index(after: firstQuote)..<lastQuote]
-            // Use colon separator instead of preserving quotes
-            return "\(beforeQuote):\(label)"
-        }
-
-        return trimmed
-    }
-
-    // TODO: Review generated code
-    private func unquoteValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("\"") && trimmed.hasSuffix("\"") && trimmed.count >= 2 {
-            return String(trimmed.dropFirst().dropLast())
-        }
-        return trimmed
     }
 }

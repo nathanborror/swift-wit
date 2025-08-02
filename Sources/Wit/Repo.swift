@@ -431,7 +431,7 @@ public actor Repo {
     }
 
     /// Merges in the given config values to the config file and optionally uploads the file to the given remote.
-    public func configMerge(path: String, values: [String: Section], remote: Remote? = nil) async throws {
+    public func configMerge(path: String, values: [String: Config.Section], remote: Remote? = nil) async throws {
         let config = try? await configRead(path: path)
         var mergedSections = config?.sections ?? [:]
 
@@ -454,7 +454,7 @@ public actor Repo {
     }
 
     /// Writes the given config values to the config file and optionally uploads the file to the given remote.
-    public func configWrite(path: String, values: [String: Section], remote: Remote? = nil) async throws {
+    public func configWrite(path: String, values: [String: Config.Section], remote: Remote? = nil) async throws {
         let newConfig = ConfigEncoder().encode(values)
         let newConfigData = newConfig.data(using: .utf8)!
         try await disk.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: nil)

@@ -22,8 +22,7 @@ Config file maintains stable information about a user and their remotes:
         id = USER_ID
         name = Nathan Borror
         email = nathan@example.com
-        username = nathan
-    [remote "origin"]
+    [remote:origin]
         url = http://localhost:8080/USER_ID
 
 Common directory structure is similar to Git. The objects folder is designed to work in a custom location to take advantage of a larger pool of storage:
