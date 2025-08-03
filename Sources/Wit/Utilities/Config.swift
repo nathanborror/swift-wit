@@ -83,6 +83,8 @@ public struct Config: Sendable {
 
 public struct ConfigEncoder {
 
+    public init() {}
+
     public func encode(_ input: [String: Config.Section]) -> String {
         var lines: [String] = []
         for key in input.keys.sorted() {
@@ -106,6 +108,8 @@ public struct ConfigEncoder {
 }
 
 public struct ConfigDecoder {
+
+    public init() {}
 
     // TODO: Review generated code
     public func decode(_ input: String) -> Config {
