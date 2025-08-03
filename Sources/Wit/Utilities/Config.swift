@@ -81,9 +81,9 @@ public struct Config: Sendable {
     }
 }
 
-struct ConfigEncoder {
+public struct ConfigEncoder {
 
-    func encode(_ input: [String: Config.Section]) -> String {
+    public func encode(_ input: [String: Config.Section]) -> String {
         var lines: [String] = []
         for key in input.keys.sorted() {
             lines.append("[\(key)]")
@@ -93,7 +93,7 @@ struct ConfigEncoder {
         return lines.joined(separator: "\n")
     }
 
-    func encode(section: Config.Section) -> [String] {
+    public func encode(section: Config.Section) -> [String] {
         switch section {
         case .dictionary(let dict):
             return dict
@@ -105,10 +105,10 @@ struct ConfigEncoder {
     }
 }
 
-struct ConfigDecoder {
+public struct ConfigDecoder {
 
     // TODO: Review generated code
-    func decode(_ input: String) -> Config {
+    public func decode(_ input: String) -> Config {
         var sections: [String: Config.Section] = [:]
         var currentSection: String?
         var currentValues: [String] = []
