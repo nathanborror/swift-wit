@@ -80,4 +80,21 @@ final class ConfigTests {
         #expect(config["user.name"] == "Test User")
         #expect(config["user.email"] == nil)
     }
+
+    @Test("Empty values")
+    func emptyValues() {
+        let input: [String: Config.Section] = [
+            "core": .dictionary(["version": "1.0"]),
+            "user": .dictionary(["name": "", "email": "alice@example.com"]),
+        ]
+
+        let encoded = ConfigEncoder().encode(input)
+        let expected = """
+            [core]
+                version = 1.0
+            [user]
+                email = alice@example.com
+            """
+        #expect(encoded == expected)
+    }
 }

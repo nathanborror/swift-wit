@@ -100,7 +100,12 @@ public struct ConfigEncoder {
         case .dictionary(let dict):
             return dict
                 .sorted { $0.key < $1.key }
-                .map { "\($0.key) = \($0.value)" }
+                .compactMap {
+                    if !$0.value.isEmpty {
+                        return "\($0.key) = \($0.value)"
+                    }
+                    return nil
+                }
         case .array(let items):
             return items
         }
