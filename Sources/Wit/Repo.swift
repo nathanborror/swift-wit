@@ -242,6 +242,7 @@ public actor Repo {
     }
 
     /// Reapply commits on top of HEAD.
+    @discardableResult
     public func rebase(_ remote: Remote) async throws -> String {
         try await fetch(remote)
 
