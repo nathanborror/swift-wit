@@ -105,13 +105,13 @@ public actor Objects {
         var envelopes: [String: File] = [:]
         for entry in tree.entries {
             let envelope = try await retrieve(entry.hash)
+            let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
             switch envelope.kind {
             case .blob:
-                let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
                 envelopes[path] = .init(path: path, hash: entry.hash, mode: .normal)
             case .tree:
                 let tree = try await retrieve(entry.hash, as: Tree.self)
-                let additional = try await retrieveFileReferencesRecursive(tree, path: entry.name)
+                let additional = try await retrieveFileReferencesRecursive(tree, path: path)
                 envelopes.merge(additional) { _, new in new }
             case .commit:
                 continue

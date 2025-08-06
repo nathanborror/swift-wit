@@ -87,12 +87,19 @@ final class RepoTests {
         #expect(commit1_Status.isEmpty == true)
 
         try await repo.write("Updated foo", path: "Documents/foo.txt")
-        try await repo.write("This is some baz", path: "baz.txt")
+        try await repo.write("This is some baz", path: "Documents/Folder/baz.txt")
         try await repo.delete("Documents/bar.txt")
 
-        let status_WithChanges = try await repo.status()
-        #expect(status_WithChanges.isEmpty == false)
-        #expect(status_WithChanges.count == 3)
+        let status1_WithChanges = try await repo.status()
+        #expect(status1_WithChanges.isEmpty == false)
+        #expect(status1_WithChanges.count == 3)
+
+        let commit2_Hash = try await repo.commit("Updated files")
+        #expect(commit1_Hash != commit2_Hash)
+
+        let status2_WithChanges = try await repo.status()
+        #expect(status2_WithChanges.isEmpty == true)
+        #expect(status2_WithChanges.count == 0)
     }
 
     @Test("Commit changes")
