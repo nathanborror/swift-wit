@@ -5,13 +5,13 @@ import CommonCrypto
 private let logger = Logger(subsystem: "RemoteS3", category: "Wit")
 
 public actor RemoteS3: Remote {
+    public let baseURL: URL
 
     let bucket: String
     let region: String
     let accessKey: String
     let secretKey: String
 
-    let baseURL: URL
     let session: URLSession
     let maxConcurrentUploads = 5
 

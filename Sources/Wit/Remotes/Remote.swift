@@ -4,14 +4,13 @@ import CryptoKit
 public protocol Remote: Actor {
     typealias PrivateKey = Curve25519.Signing.PrivateKey
 
-    func exists(path: String) async throws -> Bool
+    var baseURL: URL { get }
 
+    func exists(path: String) async throws -> Bool
     func get(path: String) async throws -> Data
     func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws
     func delete(path: String, privateKey: PrivateKey?) async throws
-
     func move(path: String, to toPath: String) async throws
-
     func list(path: String, ignores: [String]) async throws -> [String: URL]
 }
 

@@ -4,8 +4,7 @@ import OSLog
 private let logger = Logger(subsystem: "RemoteHTTP", category: "Wit")
 
 public actor RemoteDisk: Remote {
-
-    let baseURL: URL
+    public let baseURL: URL
 
     private var cache: [String: Data]
 

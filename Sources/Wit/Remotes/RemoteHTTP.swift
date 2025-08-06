@@ -4,7 +4,8 @@ import OSLog
 private let logger = Logger(subsystem: "RemoteHTTP", category: "Wit")
 
 public actor RemoteHTTP: Remote {
-    let baseURL: URL
+    public let baseURL: URL
+
     let session: URLSession
     let maxConcurrentUploads = 5
 
