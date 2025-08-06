@@ -365,12 +365,15 @@ public actor Repo {
             let _ = try await remoteObjects.store(envelope, privateKey: privateKey)
         }
 
-        // Update remote HEAD, log
-        if let currentHead = await HEAD() {
-            try await remote.put(path: Self.defaultHeadPath, data: currentHead.data(using: .utf8)!, directoryHint: .notDirectory, privateKey: privateKey)
-        }
-        if let commitLogs = await retrieveCommitLogFile() {
-            try await remote.put(path: Self.defaultLogsPath, data: commitLogs.data(using: .utf8)!, directoryHint: .notDirectory, privateKey: privateKey)
+        // Upload current HEAD, logs and config to remote
+        for path in [
+            Self.defaultConfigPath,
+            Self.defaultLogsPath,
+            Self.defaultHeadPath,
+        ] {
+            if let data = try? await read(path) {
+                try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
+            }
         }
 
         // Finished
