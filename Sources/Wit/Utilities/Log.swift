@@ -6,7 +6,7 @@ public struct Log: Identifiable, Sendable {
     public let parts: [String]
     public let message: String?
 
-    public var id: String { timestamp.ISO8601Format() }
+    public var id: String { timestamp.toISO8601_UTC }
 
     public enum Kind: String, Sendable {
         case commit = "COMMIT"
@@ -24,7 +24,7 @@ public struct Log: Identifiable, Sendable {
 struct LogEncoder {
 
     func encode(commit: Commit, hash: String) -> String {
-        let timestamp = dateFormatter(commit.timestamp)
+        let timestamp = commit.timestamp.toISO8601_UTC
         let parts = [
             timestamp,
             "COMMIT",
@@ -37,7 +37,7 @@ struct LogEncoder {
 
     func encode(log: Log) -> String {
         var parts = [
-            dateFormatter(log.timestamp),
+            log.timestamp.toISO8601_UTC,
             log.kind.rawValue,
         ]
         parts += log.parts
@@ -47,13 +47,6 @@ struct LogEncoder {
         return parts
             .compactMap { $0 }
             .joined(separator: " ")
-    }
-
-    func dateFormatter(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter.string(from: date)
     }
 }
 
@@ -75,7 +68,7 @@ struct LogDecoder {
             message = nil
         }
         if parts.count >= 2 {
-            timestamp = parseISO8601Date(parts[0]) ?? .now
+            timestamp = .parseISO8601_UTC(parts[0]) ?? .now
             kind = .init(rawValue: parts[1]) ?? .unknown
             return .init(
                 timestamp: timestamp,
@@ -91,12 +84,5 @@ struct LogDecoder {
                 message: message
             )
         }
-    }
-
-    func parseISO8601Date(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter.date(from: string)
     }
 }

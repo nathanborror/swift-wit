@@ -24,6 +24,29 @@ extension String {
     }
 }
 
+extension Date {
+
+    var toISO8601_UTC: String {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds
+        ]
+        return formatter.string(from: self)
+    }
+
+    static func parseISO8601_UTC(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds
+        ]
+        return formatter.date(from: string)
+    }
+}
+
 extension Collection {
 
     subscript(safe index: Index) -> Element? {

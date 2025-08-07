@@ -31,7 +31,7 @@ public struct Commit: Storable, Codable, Sendable {
                 parent = String(line.dropFirst("PARENT ".count))
             } else if line.hasPrefix("TIMESTAMP ") {
                 let str = String(line.dropFirst("TIMESTAMP ".count))
-                timestamp = try? Date(str, strategy: .iso8601)
+                timestamp = .parseISO8601_UTC(str)
             } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
                 continue
             } else {
@@ -51,7 +51,7 @@ public struct Commit: Storable, Codable, Sendable {
         if let parent = parent {
             out.append("PARENT \(parent)")
         }
-        out.append("TIMESTAMP \(timestamp.ISO8601Format(.iso8601WithTimeZone(includingFractionalSeconds: true)))")
+        out.append("TIMESTAMP \(timestamp.toISO8601_UTC)")
         out.append("")
         out.append(message)
         return out.joined(separator: "\n").data(using: .utf8)!
