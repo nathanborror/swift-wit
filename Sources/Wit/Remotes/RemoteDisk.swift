@@ -71,9 +71,10 @@ public actor RemoteDisk: Remote {
                 options: [.skipsPackageDescendants]
             )
             while let fileURL = enumerator?.nextObject() as? URL {
-                let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
+                let standardizedFileURL = fileURL.standardizedFileURL
+                let relativePath = standardizedFileURL.path.replacingOccurrences(of: url.path + "/", with: "")
                 guard !shouldIgnore(relativePath, ignores) else { continue }
-                out[relativePath] = fileURL
+                out[relativePath] = standardizedFileURL
             }
             return out
         }.value
