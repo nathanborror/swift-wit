@@ -133,6 +133,9 @@ final class RepoTests {
         let commit2_Tree = try await repo.objects.retrieve(commit2.tree, as: Tree.self)
         #expect(commit2.parent == commit1_Hash)
         #expect(commit2_Tree.entries.count == 0)
+
+        let logs = try await repo.logs()
+        #expect(logs.count == 2)
     }
 
     @Test("File References")
@@ -154,6 +157,7 @@ final class RepoTests {
         let (path, repo) = NewRepo()
         defer { RemoveDirectory(path) }
 
+        try await repo.initialize()
         try await repo.write("This is some foo", path: "foo.txt")
         try await repo.write("This is some bar", path: "Documents/bar.txt")
         try await repo.write("This is some baz", path: "Documents/Sub/baz.txt")

@@ -527,23 +527,14 @@ extension Repo {
     /// Encodes a Commit log message and appends it to the logs file.
     func log(commit: Commit, hash: String) async throws {
         let line = LogEncoder().encode(commit: commit, hash: hash) + "\n"
-        try log(path: Self.defaultLogsPath, append: line)
+        try await log(path: Self.defaultLogsPath, append: line)
     }
 
     /// Appends line to given log file.
-    func log(path: String, append line: String) throws {
+    func log(path: String, append line: String) async throws {
         guard let lineData = line.data(using: .utf8) else { return }
-        guard let fileHandle = FileHandle(forUpdatingAtPath: (diskURL/path).path) else {
-            print("Log Error: missing `\(Self.defaultLogsPath)` file")
-            return
-        }
-        defer { try? fileHandle.close() }
-        do {
-            try fileHandle.seekToEnd()
-            try fileHandle.write(contentsOf: lineData)
-        } catch {
-            print("Log Error: failed to append `\(error)`")
-        }
+        let logsData = try await read(Self.defaultLogsPath)
+        try await write(logsData+lineData, path: Self.defaultLogsPath)
     }
 
     // TODO: Review generated code

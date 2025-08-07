@@ -57,12 +57,18 @@ final class RemoteTests {
     func push() async throws {
         try await client.write("This is some foo", path: "foo.txt")
         try await client.write("This is some bar", path: "bar.txt")
-        let initialCommitHash = try await client.commit("Initial commit")
-        let initialStatus = try await client.status(.commit(initialCommitHash))
-        #expect(initialStatus.isEmpty)
-
-        // Push local commit to remote instance.
+        try await client.commit("Initial commit")
         try await client.push(remote)
+
+        let logCheck1 = try await client.logs()
+        #expect(logCheck1.count == 1)
+
+        try await client.write("This is more foo", path: "foo.txt")
+        try await client.commit("Second commit")
+        try await client.push(remote)
+
+        let logCheck2 = try await client.logs()
+        #expect(logCheck2.count == 2)
     }
 
     @Test("Fetch")
