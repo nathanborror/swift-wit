@@ -62,11 +62,11 @@ public actor Repo {
     }
 
     public func write(_ string: String?, path: String) async throws {
-        guard let string else { return }
-        try await write(string.data(using: .utf8), path: path)
+        guard let string, let data = string.data(using: .utf8) else { return }
+        try await write(data, path: path)
     }
 
-    public func write(_ data: Data?, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
+    public func write(_ data: Data, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
         try await disk.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
