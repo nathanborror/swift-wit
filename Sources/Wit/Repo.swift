@@ -102,7 +102,7 @@ public actor Repo {
             print("Remote HEAD missing")
             return
         }
-        try await write(remoteHead, path: Self.defaultHeadPath)
+        try await writeHEAD(remoteHead)
 
         // Copy necessary files
         for path in [
@@ -202,7 +202,7 @@ public actor Repo {
     /// Record changes to the repository.
     @discardableResult
     public func commit(_ message: String) async throws -> String {
-        let head = await HEAD()
+        let head = await readHEAD()
         var files = try await status()
 
         // Store blobs, generate hashes and update the file references before building new tree structure
@@ -236,7 +236,7 @@ public actor Repo {
         let commitHash = try await objects.store(commit, privateKey: privateKey)
 
         // Update HEAD, log commit
-        try await write(commitHash, path: Self.defaultHeadPath)
+        try await writeHEAD(commitHash)
         try await log(commit: commit, hash: commitHash)
 
         return commitHash
@@ -247,7 +247,7 @@ public actor Repo {
     public func rebase(_ remote: Remote) async throws -> String {
         try await fetch(remote)
 
-        let head = await HEAD()
+        let head = await readHEAD()
         let remoteHeadData = try await read(".wild/remotes/origin/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
 
@@ -330,10 +330,10 @@ public actor Repo {
         }
 
         // Update local HEAD
-        guard let finalHead = rebasedCommits.last, let finalHeadData = finalHead.data(using: .utf8) else {
+        guard let finalHead = rebasedCommits.last else {
             throw Error.missingHEAD
         }
-        try await write(finalHeadData, path: Self.defaultHeadPath)
+        try await writeHEAD(finalHead)
 
         // Checkout and update final HEAD
         try await checkout(finalHead)
@@ -344,7 +344,7 @@ public actor Repo {
     /// Checkouts a commit by changing the HEAD to the given commit and rebuilding the working directory.
     public func checkout(_ commitHash: String) async throws {
         let commit = try await objects.retrieve(commitHash, as: Commit.self)
-        try await write(commitHash, path: Self.defaultHeadPath)
+        try await writeHEAD(commitHash)
         try await buildWorkingDirectoryRecursively(commit.tree)
     }
 
@@ -352,7 +352,7 @@ public actor Repo {
 
     /// Update remote along with associated objects.
     public func push(_ remote: Remote) async throws {
-        guard let head = await HEAD() else {
+        guard let head = await readHEAD() else {
             print("Nothing to push: local HEAD not set")
             return
         }
@@ -412,7 +412,7 @@ public actor Repo {
         try await write(remoteHeadData, path: ".wild/remotes/origin/HEAD")
 
         // Local head
-        let head = await HEAD()
+        let head = await readHEAD()
 
         // Compare heads
         guard !remoteHead.isEmpty, head != remoteHead else { return }
@@ -479,14 +479,18 @@ public actor Repo {
 
     // MARK: HEAD
 
-    public func HEAD() async -> String? {
+    public func readHEAD() async -> String? {
         guard let data = try? await read(Self.defaultHeadPath) else {
             return nil
         }
-        if let hash = String(data: data, encoding: .utf8) {
+        if let hash = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
             return hash.isEmpty ? nil : hash
         }
         return nil
+    }
+
+    private func writeHEAD(_ hash: String) async throws {
+        try await write(hash.trimmingCharacters(in: .whitespacesAndNewlines), path: Self.defaultHeadPath)
     }
 }
 
@@ -497,7 +501,7 @@ extension Repo {
     func retrieveHash(ref: Ref) async throws -> String {
         switch ref {
         case .head:
-            guard let hash = await HEAD() else {
+            guard let hash = await readHEAD() else {
                 throw Error.missingHash
             }
             return hash

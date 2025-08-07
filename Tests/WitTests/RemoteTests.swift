@@ -94,7 +94,7 @@ final class RemoteTests {
 
         // ClientB: Clone
         try await clientB.clone(remote)
-        let clientB_HEAD = await clientB.HEAD()
+        let clientB_HEAD = await clientB.readHEAD()
         #expect(clientB_HEAD == clientA_commit1)
 
         // ClientA: Second commit
