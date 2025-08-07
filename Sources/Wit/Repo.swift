@@ -547,7 +547,7 @@ extension Repo {
     func log(path: String, append line: String) async throws {
         guard let lineData = line.data(using: .utf8) else { return }
         let logsData = try await read(Self.defaultLogsPath)
-        try await write(logsData+lineData, path: Self.defaultLogsPath)
+        try await write(logsData+lineData, path: path)
     }
 
     // TODO: Review generated code
