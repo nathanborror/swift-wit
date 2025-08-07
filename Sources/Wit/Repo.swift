@@ -267,21 +267,15 @@ public actor Repo {
         // Determine local-only commits (from localHead back to common ancestor, reversed)
         let localChain = try await ancestryPath(from: head, stopBefore: ancestor)
 
-        // TODO: This is a mess...
         if localChain.isEmpty {
             logger.info("Nothing to rebase; local has no unique commits")
-
-            // Update HEAD
-            try await write(remoteHead, path: Self.defaultHeadPath)
 
             // Update logs
             let remoteLogs = try await read(".wild/remotes/origin/logs")
             try await write(remoteLogs, path: Self.defaultLogsPath)
 
-            // Update working directory
-            let commit = try await objects.retrieve(remoteHead, as: Commit.self)
-            try await buildWorkingDirectoryRecursively(commit.tree)
-
+            // Checkout and make the remote head the current HEAD
+            try await checkout(remoteHead)
             return remoteHead
         }
 
@@ -341,13 +335,17 @@ public actor Repo {
         }
         try await write(finalHeadData, path: Self.defaultHeadPath)
 
-        // Update working directory to reflect new HEAD
-        let finalCommit = try await objects.retrieve(finalHead, as: Commit.self)
-        try await buildWorkingDirectoryRecursively(finalCommit.tree)
-
+        // Checkout and update final HEAD
+        try await checkout(finalHead)
         logger.info("Rebased \(localChain.count) commits on top of remote, new HEAD: \(finalHead)")
-
         return finalHead
+    }
+
+    /// Checkouts a commit by changing the HEAD to the given commit and rebuilding the working directory.
+    public func checkout(_ commitHash: String) async throws {
+        let commit = try await objects.retrieve(commitHash, as: Commit.self)
+        try await write(commitHash, path: Self.defaultHeadPath)
+        try await buildWorkingDirectoryRecursively(commit.tree)
     }
 
     // MARK: Workflows
