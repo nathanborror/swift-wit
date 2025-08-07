@@ -156,10 +156,11 @@ public actor Repo {
 
     /// Show the working tree status.
     public func status(_ ref: Ref = .head) async throws -> [File] {
+        let commitHash = try? await retrieveHash(ref: ref)
 
         // Gather file references within the commit
         let fileReferences: [String: File]
-        if let commitHash = try? await retrieveHash(ref: ref) {
+        if let commitHash {
             let commit = try await objects.retrieve(commitHash, as: Commit.self)
             let tree = try await objects.retrieve(commit.tree, as: Tree.self)
             fileReferences = try await objects.retrieveFileReferencesRecursive(tree)
@@ -184,7 +185,7 @@ public actor Repo {
 
         // Find deletions
         for (path, file) in fileReferences where fileReferencesCurrent[path] == nil {
-            out.append(file.apply(state: .deleted, previousHash: nil))
+            out.append(file.apply(state: .deleted, previousHash: commitHash))
         }
         return out
     }
