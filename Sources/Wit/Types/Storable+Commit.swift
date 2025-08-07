@@ -16,15 +16,45 @@ public struct Commit: Storable, Codable, Sendable {
     }
 
     public init(data: Data) throws {
-        let commit = try JSONDecoder().decode(Commit.self, from: data)
         self.kind = .commit
-        self.tree = commit.tree
-        self.parent = commit.parent
-        self.message = commit.message
-        self.timestamp = commit.timestamp
+
+        var tree: String?
+        var parent: String?
+        var timestamp: Date?
+        var message: [String] = []
+
+        let lines = String(data: data, encoding: .utf8)?.split(separator: "\n") ?? []
+        for line in lines {
+            if line.hasPrefix("TREE ") {
+                tree = String(line.dropFirst("TREE ".count))
+            } else if line.hasPrefix("PARENT ") {
+                parent = String(line.dropFirst("PARENT ".count))
+            } else if line.hasPrefix("TIMESTAMP ") {
+                let str = String(line.dropFirst("TIMESTAMP ".count))
+                timestamp = try? Date(str, strategy: .iso8601)
+            } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                continue
+            } else {
+                message.append(String(line))
+            }
+        }
+
+        self.tree = tree ?? ""
+        self.parent = parent
+        self.timestamp = timestamp ?? .now
+        self.message = message.joined(separator: "\n")
     }
 
     public func encode() throws -> Data {
-        try StorableEncoder.encode(self)
+        var out: [String] = []
+        out.append("TREE \(tree)")
+        if let parent = parent {
+            out.append("PARENT \(parent)")
+        }
+        out.append("TIMESTAMP \(timestamp.ISO8601Format(.iso8601WithTimeZone(includingFractionalSeconds: true)))")
+        out.append("")
+        out.append(message)
+        return out.joined(separator: "\n").data(using: .utf8)!
     }
 }
+

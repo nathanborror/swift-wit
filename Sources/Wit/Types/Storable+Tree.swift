@@ -25,14 +25,28 @@ public struct Tree: Storable, Codable, Sendable {
     }
 
     public init(data: Data) throws {
-        let tree = try JSONDecoder().decode(Tree.self, from: data)
-        self.kind = tree.kind
-        self.entries = tree.entries
+        self.kind = .tree
+
+        let lines = String(data: data, encoding: .utf8)!
+            .split(separator: "\n")
+            .filter { !$0.isEmpty }
+
+        self.entries = lines.compactMap { line in
+            guard let colonIndex = line.firstIndex(of: ":") else { return nil }
+            let prefix = line[..<colonIndex].trimmingCharacters(in: .whitespaces)
+            let name = line[line.index(after: colonIndex)...].trimmingCharacters(in: .whitespaces)
+            let parts = prefix.split(separator: " ")
+            guard parts.count >= 3 else { return nil }
+            guard let mode = Entry.Mode(rawValue: String(parts[0])) else { return nil }
+            return .init(mode: mode, name: name, hash: String(parts[2]))
+        }
     }
 
     public func encode() throws -> Data {
-        let entries = self.entries.sorted { $0.name < $1.name }
-        let tree = Tree(entries: entries)
-        return try StorableEncoder.encode(tree)
+        entries
+            .sorted { $0.name < $1.name }
+            .map { "\($0.mode.rawValue) \($0.mode == .directory ? "TREE" : "BLOB") \($0.hash) :\($0.name)" }
+            .joined(separator: "\n")
+            .data(using: .utf8)!
     }
 }

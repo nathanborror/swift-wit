@@ -8,8 +8,3 @@ public protocol Storable: Sendable {
     func encode() throws -> Data
 }
 
-let StorableEncoder: JSONEncoder = {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    return encoder
-}()
