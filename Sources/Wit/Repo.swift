@@ -189,6 +189,7 @@ public actor Repo {
         return out
     }
 
+    /// Show commit logs.
     public func logs() async throws -> [Log] {
         guard let contents = await retrieveCommitLogFile() else {
             return []
@@ -265,9 +266,23 @@ public actor Repo {
 
         // Determine local-only commits (from localHead back to common ancestor, reversed)
         let localChain = try await ancestryPath(from: head, stopBefore: ancestor)
+
+        // TODO: This is a mess...
         if localChain.isEmpty {
             logger.info("Nothing to rebase; local has no unique commits")
-            return head
+
+            // Update HEAD
+            try await write(remoteHead, path: Self.defaultHeadPath)
+
+            // Update logs
+            let remoteLogs = try await read(".wild/remotes/origin/logs")
+            try await write(remoteLogs, path: Self.defaultLogsPath)
+
+            // Update working directory
+            let commit = try await objects.retrieve(remoteHead, as: Commit.self)
+            try await buildWorkingDirectoryRecursively(commit.tree)
+
+            return remoteHead
         }
 
         // Get the file state at the remote HEAD
@@ -417,11 +432,8 @@ public actor Repo {
         }
 
         // Download remote logs
-        if let remoteCommitLogs = try? await remote.get(path: Self.defaultLogsPath) {
-            try await write(remoteCommitLogs, path: ".wild/remotes/origin/logs/commits")
-        }
-        if let remoteStatusLogs = try? await remote.get(path: Self.defaultLogsPath) {
-            try await write(remoteStatusLogs, path: ".wild/remotes/origin/logs/status")
+        if let remoteLogs = try? await remote.get(path: Self.defaultLogsPath) {
+            try await write(remoteLogs, path: ".wild/remotes/origin/logs")
         }
     }
 
