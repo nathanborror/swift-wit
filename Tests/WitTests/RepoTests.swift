@@ -48,29 +48,41 @@ final class RepoTests {
 
         // RepoA → Commit 1
         try await repoA.initialize()
-        let repoA_Commit1_Hash = try await CommitFile(repoA, path: "foo.txt")
+        let repoA_commit1_hash = try await CommitFile(repoA, path: "foo.txt")
 
         // RepoB clone RepoA
         try await repoB.clone(repoA.disk)
-        #expect(await repoB.HEAD() == repoA_Commit1_Hash)
+        #expect(await repoB.HEAD() == repoA_commit1_hash)
 
         // RepoA → Commit 2
-        let repoA_Commit2_Hash = try await CommitFile(repoA, path: "bar.txt")
-        let repoA_Commit2_Commit = try await repoA.objects.retrieve(repoA_Commit2_Hash, as: Commit.self)
-        let repoA_Commit2_Tree = try await repoA.objects.retrieve(repoA_Commit2_Commit.tree, as: Tree.self)
-        #expect(repoA_Commit2_Tree.entries.count == 2)
+        let repoA_commit2_hash = try await CommitFile(repoA, path: "bar.txt")
+        let repoA_commit2_commit = try await repoA.objects.retrieve(repoA_commit2_hash, as: Commit.self)
+        let repoA_commit2_tree = try await repoA.objects.retrieve(repoA_commit2_commit.tree, as: Tree.self)
+        #expect(repoA_commit2_tree.entries.count == 2)
 
         // RepoB → Commit 3
-        let repoB_Commit3_Hash = try await CommitFile(repoB, path: "baz.txt")
-        let repoB_Commit3_Commit = try await repoB.objects.retrieve(repoB_Commit3_Hash, as: Commit.self)
-        let repoB_Commit3_Tree = try await repoB.objects.retrieve(repoB_Commit3_Commit.tree, as: Tree.self)
-        #expect(repoB_Commit3_Tree.entries.count == 2)
+        let repoB_commit3_hash = try await CommitFile(repoB, path: "baz.txt")
+        let repoB_commit3_commit = try await repoB.objects.retrieve(repoB_commit3_hash, as: Commit.self)
+        let repoB_commit3_tree = try await repoB.objects.retrieve(repoB_commit3_commit.tree, as: Tree.self)
+        #expect(repoB_commit3_tree.entries.count == 2)
+
+        let repoB_logs1 = try await repoB.logs()
+        #expect(repoB_logs1.count == 2)
 
         // RepoB Rebase
         let repoB_HEAD = try await repoB.rebase(repoA.disk)
         let repoB_HEAD_commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
         let repoB_HEAD_tree = try await repoB.objects.retrieve(repoB_HEAD_commit.tree, as: Tree.self)
         #expect(repoB_HEAD_tree.entries.count == 3)
+
+        let statusA = try await repoA.status()
+        #expect(statusA.isEmpty == true)
+        
+        let statusB = try await repoB.status()
+        #expect(statusB.isEmpty == true)
+
+        let repoB_logs2 = try await repoB.logs()
+        #expect(repoB_logs2.count == 3)
     }
 
     @Test("Status of working directory")
