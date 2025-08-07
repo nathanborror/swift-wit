@@ -343,9 +343,8 @@ public actor Repo {
 
     /// Checkouts a commit by changing the HEAD to the given commit and rebuilding the working directory.
     public func checkout(_ commitHash: String) async throws {
-        let commit = try await objects.retrieve(commitHash, as: Commit.self)
+        try await updateWorkingDirectory(to: commitHash)
         try await writeHEAD(commitHash)
-        try await buildWorkingDirectoryRecursively(commit.tree)
     }
 
     // MARK: Workflows
