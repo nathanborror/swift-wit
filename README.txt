@@ -16,7 +16,7 @@ Requirements:
 Config file maintains stable information about a user and their remotes:
 
     [core]
-        version = 1.0
+        version = 0.1
         publicKey = PUBLIC_KEY_STRING
     [user]
         id = USER_ID

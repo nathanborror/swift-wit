@@ -4,7 +4,7 @@ import Foundation
 /// namespace. Here is an example:
 ///
 ///     [core]
-///         version = 1.0
+///         version = 0.1
 ///     [user]
 ///         name = Nathan Borror
 ///     [remote:origin]

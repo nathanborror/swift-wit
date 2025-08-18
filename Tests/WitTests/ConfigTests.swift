@@ -9,7 +9,7 @@ final class ConfigTests {
     func decoding() {
         let input = """
             [core]
-                version = 1.0
+                version = 0.1
             [user]
                 name = Test User
             [remote:local]
@@ -46,7 +46,7 @@ final class ConfigTests {
 
         let expected = """
             [core]
-                version = 1.0
+                version = 0.1
             [files]
                 foo.md
                 bar.md
@@ -69,7 +69,7 @@ final class ConfigTests {
     func deletingValues() {
         let input = """
             [core]
-                version = 1.0
+                version = 0.1
             [user]
                 name = Test User
                 email = test@example.com
@@ -91,7 +91,7 @@ final class ConfigTests {
         let encoded = ConfigEncoder().encode(input)
         let expected = """
             [core]
-                version = 1.0
+                version = 0.1
             [user]
                 email = alice@example.com
             """
