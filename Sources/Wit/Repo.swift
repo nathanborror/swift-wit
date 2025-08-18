@@ -16,6 +16,7 @@ public actor Repo {
         case missingHEAD
         case missingCommonAncestor
         case missingHash
+        case missingRemote
     }
 
     public enum Ref: Sendable {
@@ -145,6 +146,11 @@ public actor Repo {
 
     /// Create an empty repository.
     public func initialize(_ remote: Remote? = nil) async throws {
+        let defaultRemote = try? await configRemoteDefault()
+        guard let remote = remote ?? defaultRemote else {
+            throw Error.missingRemote
+        }
+
         let manager = FileManager.default
 
         try manager.touch(localURL/Self.defaultConfigPath)
@@ -255,7 +261,12 @@ public actor Repo {
 
     /// Reapply commits on top of HEAD.
     @discardableResult
-    public func rebase(_ remote: Remote) async throws -> String {
+    public func rebase(_ remote: Remote? = nil) async throws -> String {
+        let defaultRemote = try? await configRemoteDefault()
+        guard let remote = remote ?? defaultRemote else {
+            throw Error.missingRemote
+        }
+
         try await fetch(remote)
 
         let head = await readHEAD()
@@ -361,7 +372,12 @@ public actor Repo {
     // MARK: Workflows
 
     /// Update remote along with associated objects.
-    public func push(_ remote: Remote) async throws {
+    public func push(_ remote: Remote? = nil) async throws {
+        let defaultRemote = try? await configRemoteDefault()
+        guard let remote = remote ?? defaultRemote else {
+            throw Error.missingRemote
+        }
+
         guard let head = await readHEAD() else {
             print("Nothing to push: local HEAD not set")
             return
@@ -404,12 +420,16 @@ public actor Repo {
     }
 
     /// Fetch from and integrate with another repository.
-    public func pull(_ remote: Remote) async throws {
+    public func pull(_ remote: Remote? = nil) async throws {
         fatalError("not implemented")
     }
 
     /// Download objects from another repository.
-    public func fetch(_ remote: Remote) async throws {
+    public func fetch(_ remote: Remote? = nil) async throws {
+        let defaultRemote = try? await configRemoteDefault()
+        guard let remote = remote ?? defaultRemote else {
+            throw Error.missingRemote
+        }
 
         // Copy remote config
         if let remoteConfig = try? await remote.get(path: Self.defaultConfigPath) {
@@ -482,8 +502,36 @@ public actor Repo {
         let newConfig = ConfigEncoder().encode(values)
         let newConfigData = newConfig.data(using: .utf8)!
         try await local.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: nil)
-        if let remote {
+
+        let defaultRemote = try? await configRemoteDefault()
+        if let remote = remote ?? defaultRemote {
             try await remote.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: privateKey)
+        }
+    }
+
+    /// Returns the default Remote if the `core.remote` property is set. This remote will get used when a remote parameter is nil.
+    public func configRemoteDefault() async throws -> Remote? {
+        let config = try await configRead(path: Self.defaultConfigPath)
+        guard let name = config["core.remote"] else { return nil }
+        guard case .dictionary(let values) = config[section: "remote:\(name)"] else { return nil }
+        switch values["kind"] {
+        case "wild":
+            guard
+                let host = values["host"],
+                let baseURL = URL(string: host)
+            else { return nil }
+            return RemoteHTTP(baseURL: baseURL)
+        case "s3":
+            guard
+                let bucket = values["bucket"],
+                let path = values["path"],
+                let region = values["region"],
+                let accessKey = values["accessKey"],
+                let secretKey = values["secretKey"]
+            else { return nil }
+            return RemoteS3(bucket: bucket, path: path, region: region, accessKey: accessKey, secretKey: secretKey)
+        default:
+            return nil
         }
     }
 
