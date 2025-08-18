@@ -146,7 +146,7 @@ public actor Repo {
         try manager.touch(localURL/Self.defaultLogsPath)
 
         try manager.mkdir(localURL/Self.defaultObjectsPath)
-        try manager.mkdir(localURL/".wild"/"remotes"/"origin")
+        try manager.mkdir(localURL/Self.defaultPath/"remotes"/"origin")
 
         // Set current version
         try await configMerge(
@@ -253,7 +253,7 @@ public actor Repo {
         try await fetch(remote)
 
         let head = await readHEAD()
-        let remoteHeadData = try await read(".wild/remotes/origin/HEAD")
+        let remoteHeadData = try await read("\(Self.defaultPath)/remotes/origin/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
 
         guard let head, let remoteHead else {
@@ -276,7 +276,7 @@ public actor Repo {
             logger.info("Nothing to rebase; local has no unique commits")
 
             // Update logs
-            let remoteLogs = try await read(".wild/remotes/origin/logs")
+            let remoteLogs = try await read("\(Self.defaultPath)/remotes/origin/logs")
             try await write(remoteLogs, path: Self.defaultLogsPath)
 
             // Checkout and make the remote head the current HEAD
@@ -413,7 +413,7 @@ public actor Repo {
         // Download remote head
         let remoteHeadData = try await remote.get(path: Self.defaultHeadPath)
         let remoteHead = String(data: remoteHeadData, encoding: .utf8) ?? ""
-        try await write(remoteHeadData, path: ".wild/remotes/origin/HEAD")
+        try await write(remoteHeadData, path: "\(Self.defaultPath)/remotes/origin/HEAD")
 
         // Local head
         let head = await readHEAD()
@@ -435,7 +435,7 @@ public actor Repo {
 
         // Download remote logs
         if let remoteLogs = try? await remote.get(path: Self.defaultLogsPath) {
-            try await write(remoteLogs, path: ".wild/remotes/origin/logs")
+            try await write(remoteLogs, path: "\(Self.defaultPath)/remotes/origin/logs")
         }
     }
 
@@ -531,7 +531,7 @@ extension Repo {
 
     /// Returns a dictionary of file references for files in the working directory keyed with their path, ignoring any ignored files.
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
-        let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
+        let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
         let files = try await local.list(path: path, ignores: ignores)
         var out: [String: File] = [:]
         for (relativePath, url) in files {
@@ -632,7 +632,7 @@ extension Repo {
         }
 
         // Files to ignore
-        let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
+        let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
 
         var entries: [Tree.Entry] = []
         let directoryURL = directory.isEmpty ? localURL : (localURL/directory)
@@ -802,7 +802,7 @@ extension Repo {
     // TODO: Review generated code
     // Update working directory to match a specific commit
     private func updateWorkingDirectory(to commitHash: String) async throws {
-        let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
+        let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
 
         // Clear current working directory (except .wild)
         let contents = try FileManager.default.contentsOfDirectory(at: localURL, includingPropertiesForKeys: nil)
