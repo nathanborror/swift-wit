@@ -65,22 +65,6 @@ final class ConfigTests {
         #expect(config[dict: "core"] == ["version": "0.1"])
     }
 
-    @Test("Deleting values")
-    func deletingValues() {
-        let input = """
-            [core]
-                version = 0.1
-            [user]
-                name = Test User
-                email = test@example.com
-            """
-        var config = ConfigDecoder().decode(input)
-        config.remove(section: "user", key: "email")
-
-        #expect(config["user.name"] == "Test User")
-        #expect(config["user.email"] == nil)
-    }
-
     @Test("Empty values")
     func emptyValues() {
         let input: [String: Config.Section] = [
@@ -96,5 +80,24 @@ final class ConfigTests {
                 email = alice@example.com
             """
         #expect(encoded == expected)
+    }
+
+    @Test("Mutations")
+    func mutations() {
+        var config = Config()
+        config["core.version"] = "0.1"
+        config["user.name"] = "Test User"
+        config["user.email"] = "test@example.com"
+
+        #expect(config["core.version"] == "0.1")
+        #expect(config["user.name"] == "Test User")
+        #expect(config[section: "user"] != nil)
+
+        config["user.name"] = nil
+        #expect(config["user.name"] == nil)
+
+        config[section: "user"] = nil
+        #expect(config["user.name"] == nil)
+        #expect(config[section: "user"] == nil)
     }
 }

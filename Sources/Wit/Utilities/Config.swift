@@ -24,21 +24,40 @@ public struct Config: Sendable {
     }
 
     public subscript(section section: String) -> Section? {
-        sections[section]
+        get { sections[section] }
+        set { sections[section] = newValue }
     }
 
     public subscript(list section: String) -> [String]? {
-        guard case .array(let items) = sections[section] else {
-            return nil
+        get {
+            guard case .array(let items) = sections[section] else {
+                return nil
+            }
+            return items
         }
-        return items
+        set {
+            if let newValue {
+                sections[section] = .array(newValue)
+            } else {
+                sections.removeValue(forKey: section)
+            }
+        }
     }
 
     public subscript(dict section: String) -> [String: String]? {
-        guard case .dictionary(let dict) = sections[section] else {
-            return nil
+        get {
+            guard case .dictionary(let dict) = sections[section] else {
+                return nil
+            }
+            return dict
         }
-        return dict
+        set {
+            if let newValue {
+                sections[section] = .dictionary(newValue)
+            } else {
+                sections.removeValue(forKey: section)
+            }
+        }
     }
 
     public subscript(prefix prefix: String) -> Config {
@@ -51,33 +70,56 @@ public struct Config: Sendable {
     }
 
     public subscript(key: String) -> String? {
-        let parts = key.split(separator: ".", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else {
-            if let section = sections[key] {
-                return ConfigEncoder().encode(section: section).joined(separator: "\n")
+        get {
+            let parts = key.split(separator: ".", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else {
+                if let section = sections[key] {
+                    return ConfigEncoder().encode(section: section).joined(separator: "\n")
+                }
+                return nil
             }
-            return nil
+            guard case let .dictionary(dict) = sections[parts[0]] else { return nil }
+            return dict[parts[1]]
         }
-        guard case let .dictionary(dict) = sections[parts[0]] else { return nil }
-        return dict[parts[1]]
+        set {
+            // Only support "section.key" writes, single-token writes are ambiguous.
+            let parts = key.split(separator: ".", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else {
+                if newValue == nil { sections.removeValue(forKey: key) } // allow deleting a whole section
+                return
+            }
+
+            let sectionName = parts[0]
+            let field = parts[1]
+
+            var dict: [String: String]
+            switch sections[sectionName] {
+            case .dictionary(let existing)?:
+                dict = existing
+            case nil:
+                dict = [:] // create dict section on first write
+            case .array?:
+                // Strong opinion: don't silently convert list→dict; fail loudly in debug.
+                assertionFailure("Attempted to set key '\(field)' on list section '\(sectionName)'")
+                return
+            }
+
+            if let value = newValue, !value.isEmpty {
+                dict[field] = value
+            } else {
+                dict.removeValue(forKey: field)
+            }
+
+            if dict.isEmpty {
+                sections.removeValue(forKey: sectionName)
+            } else {
+                sections[sectionName] = .dictionary(dict)
+            }
+        }
     }
 
     public init(sections: [String: Section] = [:]) {
         self.sections = sections
-    }
-
-    public mutating func remove(section: String) {
-        sections.removeValue(forKey: section)
-    }
-
-    public mutating func remove(section: String, key: String) {
-        guard var dict = self[dict: section] else { return }
-        dict.removeValue(forKey: key)
-        if dict.isEmpty {
-            sections.removeValue(forKey: section)
-        } else {
-            sections[section] = .dictionary(dict)
-        }
     }
 }
 
