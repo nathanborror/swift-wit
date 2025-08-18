@@ -23,17 +23,17 @@ public actor Repo {
         case commit(String)
     }
 
-    let diskURL: URL
-    let disk: any Remote
+    let localURL: URL
+    let local: any Remote
     let objects: Objects
     let privateKey: Remote.PrivateKey?
 
     public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
-        self.diskURL = URL.documentsDirectory.appending(path: path)
+        self.localURL = URL.documentsDirectory.appending(path: path)
         self.privateKey = privateKey
-        self.disk = RemoteDisk(baseURL: diskURL)
+        self.local = RemoteDisk(baseURL: localURL)
         self.objects = Objects(
-            remote: disk,
+            remote: local,
             objectsPath: objectsPath ?? Self.defaultObjectsPath
         )
     }
@@ -58,7 +58,7 @@ public actor Repo {
     // MARK: Working with files
 
     public func read(_ path: String) async throws -> Data {
-        try await disk.get(path: path)
+        try await local.get(path: path)
     }
 
     public func write(_ string: String?, path: String) async throws {
@@ -67,24 +67,28 @@ public actor Repo {
     }
 
     public func write(_ data: Data, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
-        try await disk.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
+        try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
     public func move(_ path: String, to toPath: String) async throws {
-        try await disk.move(path: path, to: toPath)
+        try await local.move(path: path, to: toPath)
     }
 
     public func delete(_ path: String) async throws {
-        try await disk.delete(path: path, privateKey: privateKey)
+        try await local.delete(path: path, privateKey: privateKey)
     }
 
-    public func exists(_ path: String) -> Bool {
-        FileManager.default.fileExists(atPath: diskURL.appending(path: path).path)
+    public func localURL(_ path: String) -> URL {
+        localURL.appending(path: path)
     }
 
-    public func existsAsDirectory(_ path: String) -> Bool {
+    public func localExists(_ path: String) -> Bool {
+        FileManager.default.fileExists(atPath: localURL(path).path)
+    }
+
+    public func localExistsAsDirectory(_ path: String) -> Bool {
         var isDir: ObjCBool = false
-        let _ = FileManager.default.fileExists(atPath: diskURL.appending(path: path).path, isDirectory: &isDir)
+        let _ = FileManager.default.fileExists(atPath: localURL(path).path, isDirectory: &isDir)
         return isDir.boolValue
     }
 
@@ -137,12 +141,12 @@ public actor Repo {
     public func initialize(_ remote: Remote? = nil) async throws {
         let manager = FileManager.default
 
-        try manager.touch(diskURL/Self.defaultConfigPath)
-        try manager.touch(diskURL/Self.defaultHeadPath)
-        try manager.touch(diskURL/Self.defaultLogsPath)
+        try manager.touch(localURL/Self.defaultConfigPath)
+        try manager.touch(localURL/Self.defaultHeadPath)
+        try manager.touch(localURL/Self.defaultLogsPath)
 
-        try manager.mkdir(diskURL/Self.defaultObjectsPath)
-        try manager.mkdir(diskURL/".wild"/"remotes"/"origin")
+        try manager.mkdir(localURL/Self.defaultObjectsPath)
+        try manager.mkdir(localURL/".wild"/"remotes"/"origin")
 
         // Set current version
         try await configMerge(
@@ -209,7 +213,7 @@ public actor Repo {
         // Store blobs, generate hashes and update the file references before building new tree structure
         for (index, file) in files.enumerated() {
             guard file.state != .deleted else { continue }
-            let data = try await disk.get(path: file.path)
+            let data = try await local.get(path: file.path)
             guard let blob = try? Blob(data: data) else { continue }
             let hash = try await objects.store(blob, privateKey: privateKey)
             files[index] = file.apply(hash: hash)
@@ -439,7 +443,7 @@ public actor Repo {
 
     /// Returns the config file as a string dictionary.
     public func configRead(path: String) async throws -> Config {
-        let configData = try await disk.get(path: path)
+        let configData = try await local.get(path: path)
         let config = String(data: configData, encoding: .utf8) ?? ""
         return ConfigDecoder().decode(config)
     }
@@ -471,7 +475,7 @@ public actor Repo {
     public func configWrite(path: String, values: [String: Config.Section], remote: Remote? = nil) async throws {
         let newConfig = ConfigEncoder().encode(values)
         let newConfigData = newConfig.data(using: .utf8)!
-        try await disk.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: nil)
+        try await local.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: nil)
         if let remote {
             try await remote.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: privateKey)
         }
@@ -528,7 +532,7 @@ extension Repo {
     /// Returns a dictionary of file references for files in the working directory keyed with their path, ignoring any ignored files.
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
         let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
-        let files = try await disk.list(path: path, ignores: ignores)
+        let files = try await local.list(path: path, ignores: ignores)
         var out: [String: File] = [:]
         for (relativePath, url) in files {
             if let hash = try? await objects.hash(for: url) {
@@ -631,7 +635,7 @@ extension Repo {
         let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
 
         var entries: [Tree.Entry] = []
-        let directoryURL = directory.isEmpty ? diskURL : (diskURL/directory)
+        let directoryURL = directory.isEmpty ? localURL : (localURL/directory)
         let contents = try FileManager.default.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey],
@@ -706,7 +710,7 @@ extension Repo {
                 try await buildWorkingDirectoryRecursively(entry.hash, path: path)
             case .normal, .executable, .symbolicLink:
                 let blob = try await objects.retrieve(entry.hash, as: Blob.self)
-                let fileURL = diskURL/path/entry.name
+                let fileURL = localURL/path/entry.name
                 try FileManager.default.mkdir(fileURL)
                 try blob.content.write(to: fileURL)
             }
@@ -801,7 +805,7 @@ extension Repo {
         let ignores = await retrieveIgnores() ?? [".DS_Store", ".wild"]
 
         // Clear current working directory (except .wild)
-        let contents = try FileManager.default.contentsOfDirectory(at: diskURL, includingPropertiesForKeys: nil)
+        let contents = try FileManager.default.contentsOfDirectory(at: localURL, includingPropertiesForKeys: nil)
         for item in contents where !ignores.contains(item.lastPathComponent) {
             try FileManager.default.removeItem(at: item)
         }
