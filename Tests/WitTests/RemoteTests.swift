@@ -112,6 +112,6 @@ final class RemoteTests {
     @Test("Config parsing")
     func configParsing() async throws {
         let config = try await clientA.configRead(path: Repo.defaultConfigPath)
-        #expect(config["core.version"] == "1.0")
+        #expect(config["core.version"] == "0.1")
     }
 }

@@ -151,7 +151,7 @@ public actor Repo {
         // Set current version
         try await configMerge(
             path: Self.defaultConfigPath,
-            values: ["core": .dictionary(["version": "1.0"])],
+            values: ["core": .dictionary(["version": "0.1"])],
             remote: remote
         )
     }

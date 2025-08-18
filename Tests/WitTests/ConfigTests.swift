@@ -22,11 +22,11 @@ final class ConfigTests {
             """
 
         let config = ConfigDecoder().decode(input)
-        #expect(config["core.version"] == "1.0")
+        #expect(config["core.version"] == "0.1")
         #expect(config["user.name"] == "Test User")
         #expect(config["remote:local.host"] == "http://localhost:8080")
         #expect(config[list: "files"]?.count == 2)
-        #expect(config[dict: "core"] == ["version": "1.0"])
+        #expect(config[dict: "core"] == ["version": "0.1"])
         #expect(config["files"] == "foo.md\nbar.md")
 
         let remotes = config[prefix: "remote"]
@@ -37,7 +37,7 @@ final class ConfigTests {
     @Test("Encoding")
     func encoding() {
         let input: [String: Config.Section] = [
-            "core": .dictionary(["version": "1.0"]),
+            "core": .dictionary(["version": "0.1"]),
             "user": .dictionary(["name": "Test User"]),
             "remote:local": .dictionary(["host": "http://localhost:8080"]),
             "files": .array(["foo.md", "bar.md"]),
@@ -58,11 +58,11 @@ final class ConfigTests {
         #expect(encoded == expected)
 
         let config = ConfigDecoder().decode(encoded)
-        #expect(config["core.version"] == "1.0")
+        #expect(config["core.version"] == "0.1")
         #expect(config["user.name"] == "Test User")
         #expect(config["remote:local.host"] == "http://localhost:8080")
         #expect(config[list: "files"]?.count == 2)
-        #expect(config[dict: "core"] == ["version": "1.0"])
+        #expect(config[dict: "core"] == ["version": "0.1"])
     }
 
     @Test("Deleting values")
@@ -84,7 +84,7 @@ final class ConfigTests {
     @Test("Empty values")
     func emptyValues() {
         let input: [String: Config.Section] = [
-            "core": .dictionary(["version": "1.0"]),
+            "core": .dictionary(["version": "0.1"]),
             "user": .dictionary(["name": "", "email": "alice@example.com"]),
         ]
 
