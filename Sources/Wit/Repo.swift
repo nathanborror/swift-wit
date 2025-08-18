@@ -130,6 +130,12 @@ public actor Repo {
             try await write(data, path: path)
         }
 
+        // Copy use picture
+        let config = try await configRead(path: Self.defaultConfigPath)
+        if let filename = config["user.picture"], let data = try? await remote.get(path: "\(Self.defaultPath)/\(filename)") {
+            try await write(data, path: "\(Self.defaultPath)/\(filename)")
+        }
+
         if bare { return }
 
         // Create working directory
