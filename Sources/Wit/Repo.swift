@@ -146,11 +146,6 @@ public actor Repo {
 
     /// Create an empty repository.
     public func initialize(_ remote: Remote? = nil) async throws {
-        let defaultRemote = try? await configRemoteDefault()
-        guard let remote = remote ?? defaultRemote else {
-            throw Error.missingRemote
-        }
-
         let manager = FileManager.default
 
         try manager.touch(localURL/Self.defaultConfigPath)
@@ -159,6 +154,10 @@ public actor Repo {
 
         try manager.mkdir(localURL/Self.defaultObjectsPath)
         try manager.mkdir(localURL/Self.defaultPath/"remotes"/"origin")
+
+        // Determine remote (nil is okay)
+        let defaultRemote = try? await configRemoteDefault()
+        let remote = remote ?? defaultRemote
 
         // Set current version
         try await configMerge(
