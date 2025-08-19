@@ -200,7 +200,7 @@ public actor Repo {
 
         // Find deletions
         for (path, file) in fileReferences where fileReferencesCurrent[path] == nil {
-            out.append(file.apply(state: .deleted, previousHash: commitHash))
+            out.append(file.apply(state: .deleted, previousHash: nil))
         }
         return out
     }
