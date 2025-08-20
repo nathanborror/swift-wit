@@ -143,8 +143,8 @@ public actor Repo {
         let commit = try await objects.retrieve(remoteHead, as: Commit.self)
         try await buildWorkingDirectoryRecursively(commit.tree)
 
-        let baseURLString = await remote.baseURL.absoluteString
-        postStatusNotification("Cloned '\(baseURLString)'")
+        let remoteURLString = await remote.baseURL.absoluteString
+        postStatusNotification("Cloned '\(remoteURLString)'")
     }
 
     /// Create an empty repository.
@@ -422,7 +422,8 @@ public actor Repo {
         }
 
         // Finished
-        postStatusNotification("Pushed \(toPush.count) objects to \(remote)")
+        let remoteURLString = await remote.baseURL.absoluteString
+        postStatusNotification("Pushed \(toPush.count) objects to '\(remoteURLString)'")
     }
 
     /// Fetch from and integrate with another repository.
