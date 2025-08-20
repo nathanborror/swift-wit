@@ -144,7 +144,7 @@ public actor Repo {
         try await buildWorkingDirectoryRecursively(commit.tree)
 
         let remoteURLString = await remote.baseURL.absoluteString
-        postStatusNotification("Cloned '\(remoteURLString)'")
+        await postStatusNotification("Cloned '\(remoteURLString)'")
     }
 
     /// Create an empty repository.
@@ -169,7 +169,7 @@ public actor Repo {
             remote: remote
         )
 
-        postStatusNotification("Initialized repository")
+        await postStatusNotification("Initialized repository")
     }
 
     // MARK: Examine history and state
@@ -260,7 +260,7 @@ public actor Repo {
         try await writeHEAD(commitHash)
         try await log(commit: commit, hash: commitHash)
 
-        postStatusNotification("Committed '\(message)'")
+        await postStatusNotification("Committed '\(message)'")
         return commitHash
     }
 
@@ -282,7 +282,7 @@ public actor Repo {
             throw Error.missingHEAD
         }
         if head == remoteHead {
-            postStatusNotification("Nothing to rebase — already up-to-date")
+            await postStatusNotification("Nothing to rebase — already up-to-date")
             return head
         }
 
@@ -295,7 +295,7 @@ public actor Repo {
         let localChain = try await ancestryPath(from: head, stopBefore: ancestor)
 
         if localChain.isEmpty {
-            postStatusNotification("Nothing to rebase — no unique commits")
+            await postStatusNotification("Nothing to rebase — no unique commits")
 
             // Update logs
             let remoteLogs = try await read("\(Self.defaultPath)/remotes/origin/logs")
@@ -364,7 +364,7 @@ public actor Repo {
 
         // Checkout and update final HEAD
         try await checkout(finalHead)
-        postStatusNotification("Rebased \(localChain.count) commits on top of remote")
+        await postStatusNotification("Rebased \(localChain.count) commits on top of remote")
         return finalHead
     }
 
@@ -372,7 +372,7 @@ public actor Repo {
     public func checkout(_ commitHash: String) async throws {
         try await updateWorkingDirectory(to: commitHash)
         try await writeHEAD(commitHash)
-        postStatusNotification("Checked out commit (\(commitHash.prefix(7)))")
+        await postStatusNotification("Checked out commit (\(commitHash.prefix(7)))")
     }
 
     // MARK: Workflows
@@ -385,7 +385,7 @@ public actor Repo {
         }
 
         guard let head = await readHEAD() else {
-            postStatusNotification("Nothing to push — missing local HEAD")
+            await postStatusNotification("Nothing to push — missing local HEAD")
             return
         }
 
@@ -401,7 +401,7 @@ public actor Repo {
         let toPush = localReachable.subtracting(remoteReachable)
 
         if toPush.isEmpty {
-            postStatusNotification("Nothing to push — remote up-to-date")
+            await postStatusNotification("Nothing to push — remote up-to-date")
             return
         }
 
@@ -423,7 +423,7 @@ public actor Repo {
 
         // Finished
         let remoteURLString = await remote.baseURL.absoluteString
-        postStatusNotification("Pushed \(toPush.count) objects to '\(remoteURLString)'")
+        await postStatusNotification("Pushed \(toPush.count) objects to '\(remoteURLString)'")
     }
 
     /// Fetch from and integrate with another repository.
@@ -877,10 +877,13 @@ extension Repo {
     }
 }
 
+// MARK: - Notifications
+
 extension Repo {
 
     public static let statusNotification = Notification.Name("wit.repo.status")
 
+    @MainActor
     private func postStatusNotification(_ message: String) {
         logger.info("\(message)")
         let userInfo: [String: String] = [
