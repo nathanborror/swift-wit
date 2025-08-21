@@ -476,9 +476,8 @@ public actor Repo {
 
     /// Returns the config file as a string dictionary.
     public func configRead(path: String) async throws -> Config {
-        let configData = try await local.get(path: path)
-        let config = String(data: configData, encoding: .utf8) ?? ""
-        return ConfigDecoder().decode(config)
+        let data = try await local.get(path: path)
+        return ConfigDecoder().decode(data)
     }
 
     /// Merges in the given config values to the config file and optionally uploads the file to the given remote.

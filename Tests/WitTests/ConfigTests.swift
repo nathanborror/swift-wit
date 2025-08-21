@@ -21,7 +21,7 @@ final class ConfigTests {
                 bar.md
             """
 
-        let config = ConfigDecoder().decode(input)
+        let config = ConfigDecoder().decode(input.data(using: .utf8)!)
         #expect(config["core.version"] == "0.1")
         #expect(config["user.name"] == "Test User")
         #expect(config["remote:local.host"] == "http://localhost:8080")
@@ -57,7 +57,7 @@ final class ConfigTests {
             """
         #expect(encoded == expected)
 
-        let config = ConfigDecoder().decode(encoded)
+        let config = ConfigDecoder().decode(encoded.data(using: .utf8)!)
         #expect(config["core.version"] == "0.1")
         #expect(config["user.name"] == "Test User")
         #expect(config["remote:local.host"] == "http://localhost:8080")

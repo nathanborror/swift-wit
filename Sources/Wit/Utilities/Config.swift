@@ -159,7 +159,9 @@ public struct ConfigDecoder {
     public init() {}
 
     // TODO: Review generated code
-    public func decode(_ input: String) -> Config {
+    public func decode(_ data: Data) -> Config {
+        let input = String(data: data, encoding: .utf8) ?? ""
+        
         var sections: [String: Config.Section] = [:]
         var currentSection: String?
         var currentValues: [String] = []
