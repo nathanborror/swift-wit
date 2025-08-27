@@ -77,7 +77,7 @@ public actor RemoteHTTP: Remote {
         }
 
         switch httpResponse.statusCode {
-        case 200:
+        case 200..<300:
             logger.info("PUT (\(request.url?.path ?? "."))")
             return
         default:
@@ -99,7 +99,7 @@ public actor RemoteHTTP: Remote {
         }
 
         switch httpResponse.statusCode {
-        case 200, 204:
+        case 200..<300:
             logger.info("DELETE (\(request.url?.path ?? ""))")
             return
         default:
