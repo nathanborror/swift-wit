@@ -22,15 +22,15 @@ final class RepoTests {
         // RepoB clone
         try await repoB.clone(repoA.local)
         let repoB_HEAD = await repoB.readHEAD()!
-        let repoB_HEAD_Commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
-        let repoB_HEAD_Commit_Tree = try await repoB.objects.retrieve(repoB_HEAD_Commit.tree, as: Tree.self)
+        let repoB_HEAD_Commit = try await repoB.objects.retrieve(commit: repoB_HEAD)
+        let repoB_HEAD_Commit_Tree = try await repoB.objects.retrieve(tree: repoB_HEAD_Commit.tree)
         #expect(repoB_HEAD == repoA_Commit2_Hash)
         #expect(repoB_HEAD_Commit_Tree.entries.count == 1)
 
         // RepoB commit
         let repoB_Commit3_Hash = try await CommitFile(repoB, path: "baz.txt")
-        let repoB_Commit3 = try await repoB.objects.retrieve(repoB_Commit3_Hash, as: Commit.self)
-        let repoB_Commit3_Tree = try await repoB.objects.retrieve(repoB_Commit3.tree, as: Tree.self)
+        let repoB_Commit3 = try await repoB.objects.retrieve(commit: repoB_Commit3_Hash)
+        let repoB_Commit3_Tree = try await repoB.objects.retrieve(tree: repoB_Commit3.tree)
         #expect(repoB_Commit3_Tree.entries.count == 2)
 
         // RepoB push to RepoA
@@ -56,14 +56,14 @@ final class RepoTests {
 
         // RepoA → Commit 2
         let repoA_commit2_hash = try await CommitFile(repoA, path: "bar.txt")
-        let repoA_commit2_commit = try await repoA.objects.retrieve(repoA_commit2_hash, as: Commit.self)
-        let repoA_commit2_tree = try await repoA.objects.retrieve(repoA_commit2_commit.tree, as: Tree.self)
+        let repoA_commit2_commit = try await repoA.objects.retrieve(commit: repoA_commit2_hash)
+        let repoA_commit2_tree = try await repoA.objects.retrieve(tree: repoA_commit2_commit.tree)
         #expect(repoA_commit2_tree.entries.count == 2)
 
         // RepoB → Commit 3
         let repoB_commit3_hash = try await CommitFile(repoB, path: "baz.txt")
-        let repoB_commit3_commit = try await repoB.objects.retrieve(repoB_commit3_hash, as: Commit.self)
-        let repoB_commit3_tree = try await repoB.objects.retrieve(repoB_commit3_commit.tree, as: Tree.self)
+        let repoB_commit3_commit = try await repoB.objects.retrieve(commit: repoB_commit3_hash)
+        let repoB_commit3_tree = try await repoB.objects.retrieve(tree: repoB_commit3_commit.tree)
         #expect(repoB_commit3_tree.entries.count == 2)
 
         let repoB_logs1 = try await repoB.logs()
@@ -71,8 +71,8 @@ final class RepoTests {
 
         // RepoB Rebase
         let repoB_HEAD = try await repoB.rebase(repoA.local)
-        let repoB_HEAD_commit = try await repoB.objects.retrieve(repoB_HEAD, as: Commit.self)
-        let repoB_HEAD_tree = try await repoB.objects.retrieve(repoB_HEAD_commit.tree, as: Tree.self)
+        let repoB_HEAD_commit = try await repoB.objects.retrieve(commit: repoB_HEAD)
+        let repoB_HEAD_tree = try await repoB.objects.retrieve(tree: repoB_HEAD_commit.tree)
         #expect(repoB_HEAD_tree.entries.count == 3)
 
         let statusA = try await repoA.status()
@@ -122,27 +122,27 @@ final class RepoTests {
         try await repo.initialize()
         let commit1_Hash = try await CommitFile(repo, path: "Documents/foo.txt", message: "Initial commit")
         #expect(commit1_Hash.isEmpty == false)
-        #expect(try await repo.objects.exists(commit1_Hash) == true)
+        #expect(try await repo.objects.exists(key: .init(hash: commit1_Hash, kind: .commit)) == true)
 
         let head = await repo.readHEAD()
         #expect(head == commit1_Hash)
 
-        let commit1 = try await repo.objects.retrieve(commit1_Hash, as: Commit.self)
+        let commit1 = try await repo.objects.retrieve(commit: commit1_Hash)
         #expect(commit1.message == "Initial commit")
         #expect(commit1.parent == nil)
 
-        let commit1_Tree = try await repo.objects.retrieve(commit1.tree, as: Tree.self)
+        let commit1_Tree = try await repo.objects.retrieve(tree: commit1.tree)
         #expect(commit1_Tree.entries.count == 1)
         #expect(commit1_Tree.entries[0].name == "Documents")
 
-        let commit1_TreeSubTree = try await repo.objects.retrieve(commit1_Tree.entries[0].hash, as: Tree.self)
+        let commit1_TreeSubTree = try await repo.objects.retrieve(tree: commit1_Tree.entries[0].hash)
         #expect(commit1_TreeSubTree.entries.count == 1)
 
         // Delete all files and commit changes
         try await repo.delete("Documents")
         let commit2_Hash = try await repo.commit("Deleted documents")
-        let commit2 = try await repo.objects.retrieve(commit2_Hash, as: Commit.self)
-        let commit2_Tree = try await repo.objects.retrieve(commit2.tree, as: Tree.self)
+        let commit2 = try await repo.objects.retrieve(commit: commit2_Hash)
+        let commit2_Tree = try await repo.objects.retrieve(tree: commit2.tree)
         #expect(commit2.parent == commit1_Hash)
         #expect(commit2_Tree.entries.count == 0)
 
@@ -175,16 +175,16 @@ final class RepoTests {
         try await repo.write("This is some baz", path: "Documents/Sub/baz.txt")
 
         let commit1_Hash = try await repo.commit("Initial commit")
-        let commit1 = try await repo.objects.retrieve(commit1_Hash, as: Commit.self)
-        let commit1_Tree = try await repo.objects.retrieve(commit1.tree, as: Tree.self)
+        let commit1 = try await repo.objects.retrieve(commit: commit1_Hash)
+        let commit1_Tree = try await repo.objects.retrieve(tree: commit1.tree)
         let commit1_TreeBarEntry = commit1_Tree.entries.first { $0.name == "Documents" }
         let commit1_TreeBarEntryHash = commit1_TreeBarEntry?.hash
 
         try await repo.write("Updated foo", path: "foo.txt")
 
         let commit2_Hash = try await repo.commit("Update file")
-        let commit2 = try await repo.objects.retrieve(commit2_Hash, as: Commit.self)
-        let commit2_Tree = try await repo.objects.retrieve(commit2.tree, as: Tree.self)
+        let commit2 = try await repo.objects.retrieve(commit: commit2_Hash)
+        let commit2_Tree = try await repo.objects.retrieve(tree: commit2.tree)
         let commit2_TreeBarEntry = commit2_Tree.entries.first { $0.name == "Documents" }!
         let commit2_TreeBarEntryHash = commit2_TreeBarEntry.hash
         #expect(commit1_TreeBarEntryHash == commit2_TreeBarEntryHash, "'bar' directory tree should be reused")
@@ -195,8 +195,21 @@ final class RepoTests {
         #expect(commit1_FooEntry.hash != commit2_FooEntry.hash, "'foo' directory tree should be different")
     }
 
-    @Test("Common Ancestor")
-    func commonAncestor() async throws {
-       // TODO: implement
+    @Test("Config")
+    func config() async throws {
+        let (_, repo) = NewRepo()
+        try await repo.initialize()
+
+        let config1 = try await repo.configRead(path: Repo.defaultConfigPath)
+        #expect(config1["core.version"] == "0.1")
+
+        try await repo.configMerge(path: Repo.defaultConfigPath, values: [
+            "core": .dictionary([
+                "version": ""
+            ])
+        ])
+
+        let config2 = try await repo.configRead(path: Repo.defaultConfigPath)
+        #expect(config2["core.version"] == nil)
     }
 }

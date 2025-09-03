@@ -43,17 +43,13 @@ public actor Repo {
 
     public func commit(ref: Ref = .head) async throws -> (String, Commit) {
         let hash = try await retrieveHash(ref: ref)
-        let commit = try await objects.retrieve(hash, as: Commit.self)
+        let commit = try await objects.retrieve(commit: hash)
         return (hash, commit)
     }
 
     public func tree(hash: String) async throws -> (String, Tree) {
-        let tree = try await objects.retrieve(hash, as: Tree.self)
+        let tree = try await objects.retrieve(tree: hash)
         return (hash, tree)
-    }
-
-    public func envelope(hash: String) async throws -> Envelope {
-        try await objects.retrieve(hash)
     }
 
     // MARK: Working with files
@@ -121,12 +117,12 @@ public actor Repo {
         }
 
         // Copy remote objects
-        let remoteHashes = try await remoteObjects.retrieveHashes(remoteHead)
-        for hash in remoteHashes {
-            guard try await !objects.exists(hash) else {
+        let remoteKeys = try await remoteObjects.retrieveCommitKeys(remoteHead)
+        for key in remoteKeys {
+            guard try await !objects.exists(key: key) else {
                 continue
             }
-            let path = await objects.hashPath(hash)
+            let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
         }
@@ -140,7 +136,7 @@ public actor Repo {
         if bare { return }
 
         // Create working directory
-        let commit = try await objects.retrieve(remoteHead, as: Commit.self)
+        let commit = try await objects.retrieve(commit: remoteHead)
         try await buildWorkingDirectoryRecursively(commit.tree)
 
         let remoteURLString = await remote.baseURL.absoluteString
@@ -181,8 +177,8 @@ public actor Repo {
         // Gather file references within the commit
         let fileReferences: [String: File]
         if let commitHash {
-            let commit = try await objects.retrieve(commitHash, as: Commit.self)
-            let tree = try await objects.retrieve(commit.tree, as: Tree.self)
+            let commit = try await objects.retrieve(commit: commitHash)
+            let tree = try await objects.retrieve(tree: commit.tree)
             fileReferences = try await objects.retrieveFileReferencesRecursive(tree)
         } else {
             fileReferences = [:]
@@ -230,14 +226,13 @@ public actor Repo {
         for (index, file) in files.enumerated() {
             guard file.state != .deleted else { continue }
             let data = try await local.get(path: file.path)
-            guard let blob = try? Blob(data: data) else { continue }
-            let hash = try await objects.store(blob, privateKey: privateKey)
+            let hash = try await objects.store(blob: data, privateKey: privateKey)
             files[index] = file.apply(hash: hash)
         }
 
         let parentCommit: Commit?
         if let head {
-            parentCommit = try await objects.retrieve(head, as: Commit.self)
+            parentCommit = try await objects.retrieve(commit: head)
         } else {
             parentCommit = nil
         }
@@ -254,7 +249,7 @@ public actor Repo {
             parent: head,
             message: message
         )
-        let commitHash = try await objects.store(commit, privateKey: privateKey)
+        let commitHash = try await objects.store(commit: commit, privateKey: privateKey)
 
         // Update HEAD, log commit
         try await writeHEAD(commitHash)
@@ -307,8 +302,8 @@ public actor Repo {
         }
 
         // Get the file state at the remote HEAD
-        let remoteCommit = try await objects.retrieve(remoteHead, as: Commit.self)
-        let remoteTree = try await objects.retrieve(remoteCommit.tree, as: Tree.self)
+        let remoteCommit = try await objects.retrieve(commit: remoteHead)
+        let remoteTree = try await objects.retrieve(tree: remoteCommit.tree)
         var currentFiles = try await objects.retrieveFileReferencesRecursive(remoteTree)
 
         // Replay (recommit) on top of remoteHead
@@ -316,16 +311,16 @@ public actor Repo {
         var rebasedCommits: [String] = []
 
         for hash in localChain.reversed() {
-            let commit = try await objects.retrieve(hash, as: Commit.self)
+            let commit = try await objects.retrieve(commit: hash)
 
             // Get the changes introduced by this commit
-            let commitTree = try await objects.retrieve(commit.tree, as: Tree.self)
+            let commitTree = try await objects.retrieve(tree: commit.tree)
             let commitFiles = try await objects.retrieveFileReferencesRecursive(commitTree)
 
             let parentFiles: [String: File]
             if let parent = commit.parent {
-                let parentCommit = try await objects.retrieve(parent, as: Commit.self)
-                let parentTree = try await objects.retrieve(parentCommit.tree, as: Tree.self)
+                let parentCommit = try await objects.retrieve(commit: parent)
+                let parentTree = try await objects.retrieve(tree: parentCommit.tree)
                 parentFiles = try await objects.retrieveFileReferencesRecursive(parentTree)
             } else {
                 parentFiles = [:]
@@ -349,7 +344,7 @@ public actor Repo {
                 parent: newParent,
                 message: commit.message
             )
-            let rebasedCommitHash = try await objects.store(rebasedCommit, privateKey: privateKey)
+            let rebasedCommitHash = try await objects.store(commit: rebasedCommit, privateKey: privateKey)
             newParent = rebasedCommitHash
             rebasedCommits.append(rebasedCommitHash)
 
@@ -396,18 +391,28 @@ public actor Repo {
         let remoteHeadData = try? await remote.get(path: Self.defaultHeadPath)
         let remoteHead = String(data: remoteHeadData ?? Data(), encoding: .utf8) ?? ""
 
-        let remoteReachable = (!remoteHead.isEmpty) ? try await remoteObjects.retrieveHashes(remoteHead) : []
-        let localReachable = try await objects.retrieveHashes(head)
-        let toPush = localReachable.subtracting(remoteReachable)
+        let remoteReachable = (!remoteHead.isEmpty) ? try await remoteObjects.retrieveCommitKeys(remoteHead) : []
+        let localReachable = try await objects.retrieveCommitKeys(head)
+        let keysToPush = localReachable.subtracting(remoteReachable)
 
-        if toPush.isEmpty {
+        if keysToPush.isEmpty {
             await postStatusNotification("Nothing to push — remote up-to-date")
             return
         }
 
-        for hash in toPush {
-            let envelope = try await objects.retrieve(hash)
-            let _ = try await remoteObjects.store(envelope, privateKey: privateKey)
+        for key in keysToPush {
+            switch key.kind {
+            case .commit:
+                let commit = try await objects.retrieve(commit: key.hash)
+                let _ = try await remoteObjects.store(commit: commit, privateKey: privateKey)
+            case .tree:
+                let tree = try await objects.retrieve(tree: key.hash)
+                let _ = try await remoteObjects.store(tree: tree, privateKey: privateKey)
+            case .blob:
+                let blob = try await objects.retrieve(blob: key.hash)
+                let _ = try await remoteObjects.store(blob: blob, privateKey: privateKey)
+            }
+
         }
 
         // Upload current HEAD, logs and config to remote
@@ -423,7 +428,7 @@ public actor Repo {
 
         // Finished
         let remoteURLString = await remote.baseURL.absoluteString
-        await postStatusNotification("Pushed \(toPush.count) objects to '\(remoteURLString)'")
+        await postStatusNotification("Pushed \(keysToPush.count) objects to '\(remoteURLString)'")
     }
 
     /// Fetch from and integrate with another repository.
@@ -456,12 +461,12 @@ public actor Repo {
 
         // Download remote objects
         let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-        let remoteHashes = try await remoteObjects.retrieveHashes(remoteHead)
-        for hash in remoteHashes {
-            guard try await !objects.exists(hash) else {
+        let remoteKeys = try await remoteObjects.retrieveCommitKeys(remoteHead)
+        for key in remoteKeys {
+            guard try await !objects.exists(key: key) else {
                 continue
             }
-            let path = await objects.hashPath(hash)
+            let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
         }
@@ -623,14 +628,14 @@ extension Repo {
         while let hash = stack.popLast() {
             if hash.isEmpty || remoteAncestors.contains(hash) { continue }
             remoteAncestors.insert(hash)
-            let commit = try? await objects.retrieve(hash, as: Commit.self)
+            let commit = try? await objects.retrieve(commit: hash)
             if let parent = commit?.parent { stack.append(parent) }
         }
         // Walk local chain, return first common commit
         var current = localHead
         while !current.isEmpty {
             if remoteAncestors.contains(current) { return current }
-            let commit = try? await objects.retrieve(current, as: Commit.self)
+            let commit = try? await objects.retrieve(commit: current)
             guard let parent = commit?.parent else { break }
             current = parent
         }
@@ -643,7 +648,7 @@ extension Repo {
         var curr = head
         while !curr.isEmpty && curr != base {
             out.append(curr)
-            let commit = try? await objects.retrieve(curr, as: Commit.self)
+            let commit = try? await objects.retrieve(commit: curr)
             guard let parent = commit?.parent else { break }
             curr = parent
         }
@@ -687,8 +692,7 @@ extension Repo {
         // If this directory hasn't changed, reuse previous tree
         if changedSubitems[directory] == nil, let previousTree = previousTreeCache[directory] {
             let data = try previousTree.encode()
-            let header = await objects.header(kind: previousTree.kind.rawValue, count: data.count)
-            return await objects.hashCompute(header+data)
+            return await objects.computeHash(data)
         }
 
         // Files to ignore
@@ -757,22 +761,22 @@ extension Repo {
         }
 
         let tree = Tree(entries: entries)
-        return try await objects.store(tree, privateKey: privateKey)
+        return try await objects.store(tree: tree, privateKey: privateKey)
     }
 
     /// Build a directory of files from the object store relative to the given tree hash. Recurse down the tree to build a complete directory structure.
     func buildWorkingDirectoryRecursively(_ treeHash: String, path: String = "") async throws {
-        let tree = try await objects.retrieve(treeHash, as: Tree.self)
+        let tree = try await objects.retrieve(tree: treeHash)
         for entry in tree.entries {
             switch entry.mode {
             case .directory:
                 let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
                 try await buildWorkingDirectoryRecursively(entry.hash, path: path)
             case .normal, .executable, .symbolicLink:
-                let blob = try await objects.retrieve(entry.hash, as: Blob.self)
+                let data = try await objects.retrieve(blob: entry.hash)
                 let fileURL = localURL/path/entry.name
                 try FileManager.default.mkdir(fileURL)
-                try blob.content.write(to: fileURL)
+                try data.write(to: fileURL)
             }
         }
     }
@@ -832,7 +836,7 @@ extension Repo {
             }
 
             let tree = Tree(entries: treeEntries.sorted { $0.name < $1.name })
-            let treeHash = try await objects.store(tree, privateKey: privateKey)
+            let treeHash = try await objects.store(tree: tree, privateKey: privateKey)
             processedDirs[dirPath] = treeHash
         }
 
@@ -848,7 +852,7 @@ extension Repo {
         }
 
         let rootTree = Tree(entries: rootEntries.sorted { $0.name < $1.name })
-        return try await objects.store(rootTree, privateKey: privateKey)
+        return try await objects.store(tree: rootTree, privateKey: privateKey)
     }
 
     // TODO: Review generated code
@@ -871,7 +875,7 @@ extension Repo {
         }
 
         // Build new working directory
-        let commit = try await objects.retrieve(commitHash, as: Commit.self)
+        let commit = try await objects.retrieve(commit: commitHash)
         try await buildWorkingDirectoryRecursively(commit.tree)
     }
 }

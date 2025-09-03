@@ -14,117 +14,87 @@ public actor Objects {
     public let remote: Remote
 
     private let objectsPath: String
-    private let compressionThreshold: Int
-    private let useCompression: Bool
 
-    public init(remote: Remote, objectsPath: String, compressionThreshold: Int = 1024, useCompression: Bool = true) {
+    public init(remote: Remote, objectsPath: String) {
         self.remote = remote
         self.objectsPath = objectsPath.trimmingSlashes()
-        self.compressionThreshold = compressionThreshold
-        self.useCompression = useCompression
     }
 
     // MARK: Store
 
-    public func store(_ storable: any Storable, privateKey: Remote.PrivateKey?) async throws -> String {
-        let envelope = try Envelope(storable: storable)
-        return try await store(envelope, privateKey: privateKey)
+    public func store(commit: Commit, privateKey: Remote.PrivateKey?) async throws -> String {
+        let data = try commit.encode()
+        let hash = computeHash(data)
+        let path = objectPath(.init(hash: hash, kind: .commit))
+        try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
+        return hash
     }
 
-    public func store(_ envelope: Envelope, privateKey: Remote.PrivateKey?) async throws -> String {
-        var objectData = envelope.encode()
-        let objectHash = hashCompute(objectData)
-        let objectPath = hashPath(objectHash)
+    public func store(tree: Tree, privateKey: Remote.PrivateKey?) async throws -> String {
+        let data = try tree.encode()
+        let hash = computeHash(data)
+        let path = objectPath(.init(hash: hash, kind: .tree))
+        try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
+        return hash
+    }
 
-        var isCompressed = false
-        if useCompression && objectData.count > compressionThreshold {
-            let nsData = objectData as NSData
-            if let compressed = try? nsData.compressed(using: .zlib), shouldCompress(compressionBytes: compressed.count, originalBytes: objectData.count) {
-                objectData = compressed as Data
-                isCompressed = true
-            }
-        }
-
-        var storedData = Data()
-        storedData.append(isCompressed ? 0x01 : 0x00)
-        storedData.append(objectData)
-
-        try await remote.put(path: objectPath, data: storedData, directoryHint: .notDirectory, privateKey: privateKey)
-        return objectHash
+    public func store(blob data: Data, privateKey: Remote.PrivateKey?) async throws -> String {
+        let hash = computeHash(data)
+        let path = objectPath(.init(hash: hash, kind: .blob))
+        try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
+        return hash
     }
 
     // MARK: Retrieve
 
-    public func retrieve<T: Storable>(_ hash: String, as type: T.Type) async throws -> T {
-        let envelope = try await retrieve(hash)
-        switch envelope.kind {
-        case .blob:
-            if type == Blob.self {
-                return try Blob(data: envelope.content) as! T
-            }
-        case .tree:
-            if type == Tree.self {
-                return try Tree(data: envelope.content) as! T
-            }
-        case .commit:
-            if type == Commit.self {
-                return try Commit(data: envelope.content) as! T
-            }
-        }
-        throw Error.invalidObjectFormat
+    public func retrieve(commit hash: String) async throws -> Commit {
+        let path = objectPath(.init(hash: hash, kind: .commit))
+        let data = try await remote.get(path: path)
+        return try Commit(data: data)
     }
 
-    public func retrieve(_ hash: String) async throws -> Envelope {
-        var data = try await retrieveData(hash)
-        guard !data.isEmpty else {
-            throw Error.invalidObjectFormat
-        }
-
-        let isCompressed = data[0] == 0x01
-        data = data.dropFirst()
-        if isCompressed {
-            let nsData = data as NSData
-            guard let decompressed = try? nsData.decompressed(using: .zlib) else {
-                throw Error.invalidObjectFormat
-            }
-            data = decompressed as Data
-        }
-
-        guard let envelope = Envelope(data: data) else {
-            throw Error.invalidObjectFormat
-        }
-        return envelope
+    public func retrieve(tree hash: String) async throws -> Tree {
+        let path = objectPath(.init(hash: hash, kind: .tree))
+        let data = try await remote.get(path: path)
+        return try Tree(data: data)
     }
 
-    public func retrieveData(_ hash: String) async throws -> Data {
-        let objectPath = hashPath(hash)
-        return try await remote.get(path: objectPath)
+    public func retrieve(blob hash: String) async throws -> Data {
+        let path = objectPath(.init(hash: hash, kind: .blob))
+        return try await remote.get(path: path)
     }
 
     public func retrieveFileReferencesRecursive(_ tree: Tree, path: String = "") async throws -> [String: File] {
-        var envelopes: [String: File] = [:]
+        var files: [String: File] = [:]
         for entry in tree.entries {
-            let envelope = try await retrieve(entry.hash)
-            let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
-            switch envelope.kind {
-            case .blob:
-                envelopes[path] = .init(path: path, hash: entry.hash, mode: .normal)
-            case .tree:
-                let tree = try await retrieve(entry.hash, as: Tree.self)
-                let additional = try await retrieveFileReferencesRecursive(tree, path: path)
-                envelopes.merge(additional) { _, new in new }
-            case .commit:
-                continue
+            switch entry.mode {
+            case .directory:
+                let tree = try await retrieve(tree: entry.hash)
+                if path.isEmpty {
+                    let additional = try await retrieveFileReferencesRecursive(tree, path: entry.name)
+                    files.merge(additional) { _, new in new }
+                } else {
+                    let additional = try await retrieveFileReferencesRecursive(tree, path: "\(path)/\(entry.name)")
+                    files.merge(additional) { _, new in new }
+                }
+
+            case .executable, .normal, .symbolicLink:
+                if path.isEmpty {
+                    files[entry.name] = .init(path: entry.name, hash: entry.hash, mode: .normal)
+                } else {
+                    let filePath = "\(path)/\(entry.name)"
+                    files[filePath] = .init(path: filePath, hash: entry.hash, mode: .normal)
+                }
             }
         }
-        return envelopes
+        return files
     }
 
     public func retrieveTreesRecursive(_ hash: String, path: String = "") async throws -> [String: Tree] {
         guard !hash.isEmpty else { return [:] }
 
         var out: [String: Tree] = [:]
-        let tree = try await retrieve(hash, as: Tree.self)
+        let tree = try await retrieve(tree: hash)
         out[path] = tree
 
         for entry in tree.entries where entry.mode == .directory {
@@ -135,33 +105,51 @@ public actor Objects {
         return out
     }
 
+    public struct Key: Hashable, Sendable {
+        public let hash: String
+        public let kind: Kind
+
+        public enum Kind: String, Sendable {
+            case commit
+            case tree
+            case blob
+        }
+    }
+
     /// Returns a set of hashes that are referenced by a given commit
-    public func retrieveHashes(_ hash: String) async throws -> Set<String> {
-        var seen = Set<String>()
-        var stack: [String] = [hash]
+    public func retrieveCommitKeys(_ hash: String) async throws -> Set<Key> {
+        var seen = Set<Key>()
+        var stack: [Key] = [.init(hash: hash, kind: .commit)]
 
         while let hash = stack.popLast() {
             if seen.contains(hash) { continue }
             seen.insert(hash)
-            if let commit = try? await retrieve(hash, as: Commit.self) {
+            if let commit = try? await retrieve(commit: hash.hash) {
                 if !commit.tree.isEmpty {
-                    stack.append(commit.tree)
+                    stack.append(.init(hash: commit.tree, kind: .tree))
                 }
                 if let parent = commit.parent {
-                    stack.append(parent)
+                    stack.append(.init(hash: parent, kind: .commit))
                 }
-            } else if let tree = try? await retrieve(hash, as: Tree.self) {
+            } else if let tree = try? await retrieve(tree: hash.hash) {
                 for entry in tree.entries {
-                    stack.append(entry.hash)
+                    switch entry.mode {
+                    case .directory:
+                        stack.append(.init(hash: entry.hash, kind: .tree))
+                    case .executable, .normal, .symbolicLink:
+                        stack.append(.init(hash: entry.hash, kind: .blob))
+                    }
                 }
             }
         }
         return seen
     }
 
-    public func exists(_ hash: String) async throws -> Bool {
-        let objectPath = hashPath(hash)
-        return try await remote.exists(path: objectPath)
+    // MARK: Existance
+
+    public func exists(key: Key) async throws -> Bool {
+        let path = objectPath(key)
+        return try await remote.exists(path: path)
     }
 
     // MARK: Hashing
@@ -175,12 +163,9 @@ public actor Objects {
         defer { try? fileHandle.close() }
 
         let fileSize = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int ?? 0
-        let fileHeader = header(kind: "blob", count: fileSize)
-
         guard fileSize > 0 else {
-            var data = Data()
-            data += fileHeader
-            return hashCompute(data)
+            let data = Data()
+            return computeHash(data)
         }
 
         let fd = fileHandle.fileDescriptor
@@ -189,35 +174,33 @@ public actor Objects {
         }
         guard ptr != MAP_FAILED else { throw CocoaError(.fileReadUnknown) }
 
-        var data = Data()
-        data += fileHeader
-        data += Data(bytesNoCopy: ptr, count: fileSize, deallocator: .custom { ptr, size in
+        let data = Data(bytesNoCopy: ptr, count: fileSize, deallocator: .custom { ptr, size in
             munmap(ptr, size)
         })
-
-        return hashCompute(data)
-    }
-
-    // MARK: Misc
-
-    public func header(kind: String, count: Int) -> Data {
-        "\(kind) \(count)\0".data(using: .utf8)!
+        return computeHash(data)
     }
 
     // MARK: Private
 
-    func hashPath(_ hash: String) -> String {
-        let dir = String(hash.prefix(2))
-        let file = String(hash.dropFirst(2))
-        return "\(objectsPath)/\(dir)/\(file)"
+    func objectPath(_ key: Key) -> String {
+        let dir = String(key.hash.prefix(2))
+        let file = String(key.hash.dropFirst(2))
+
+        var kind = ""
+        switch key.kind {
+        case .commit:
+            kind = "commits"
+        case .tree:
+            kind = "trees"
+        case .blob:
+            kind = "blobs"
+        }
+
+        return "\(objectsPath)/\(kind)/\(dir)/\(file)"
     }
 
-    func hashCompute(_ data: Data) -> String {
+    func computeHash(_ data: Data) -> String {
         let hash = SHA256.hash(data: data)
         return hash.map { String(format: "%02x", $0) }.joined()
-    }
-
-    func shouldCompress(compressionBytes: Int, originalBytes: Int) -> Bool {
-        Double(compressionBytes) < Double(originalBytes) * 0.9 // Greater than 10% savings?
     }
 }

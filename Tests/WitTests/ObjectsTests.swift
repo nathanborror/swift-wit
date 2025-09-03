@@ -23,16 +23,15 @@ final class ObjectsTests {
     func simpleBlobStorage() async throws {
         let content = "Hello, World!"
 
-        let blob = Blob(string: content)
-        let blobHash = try await storage.store(blob, privateKey: nil)
+        let blob = content.data(using: .utf8)!
+        let blobHash = try await storage.store(blob: blob, privateKey: nil)
         #expect(blobHash != "")
 
-        let blobObj = try await storage.retrieve(blobHash)
-        #expect(blobObj.kind == .blob)
-        #expect(String(data: blobObj.content, encoding: .utf8) == content)
+        let blobData = try await storage.retrieve(blob: blobHash)
+        #expect(String(data: blobData, encoding: .utf8) == content)
 
-        let identicalBlob = Blob(string: content)
-        let identicalBlobHash = try await storage.store(identicalBlob, privateKey: nil)
+        let identicalBlob = content.data(using: .utf8)!
+        let identicalBlobHash = try await storage.store(blob: identicalBlob, privateKey: nil)
         #expect(identicalBlobHash == blobHash)
     }
 
@@ -61,24 +60,23 @@ final class ObjectsTests {
         these States. To prove this, let Facts be submitted to a candid world.
         """
 
-        let blob = Blob(string: content)
-        let blobHash = try await storage.store(blob, privateKey: nil)
+        let blob = content.data(using: .utf8)!
+        let blobHash = try await storage.store(blob: blob, privateKey: nil)
         #expect(blobHash != "")
 
-        let blobObj = try await storage.retrieve(blobHash)
-        let blobContent = String(data: blobObj.content, encoding: .utf8)
-        #expect(blobObj.kind == .blob)
+        let blobData = try await storage.retrieve(blob: blobHash)
+        let blobContent = String(data: blobData, encoding: .utf8)
         #expect(blobContent == content)
 
-        let identicalBlob = Blob(string: content)
-        let identicalBlobHash = try await storage.store(identicalBlob, privateKey: nil)
+        let identicalBlob = content.data(using: .utf8)!
+        let identicalBlobHash = try await storage.store(blob: identicalBlob, privateKey: nil)
         #expect(identicalBlobHash == blobHash)
     }
 
     @Test("Tree storage")
     func treeStorage() async throws {
-        let blob = Blob(string: "Hello, World!")
-        let blobHash = try await storage.store(blob, privateKey: nil)
+        let blob = "Hello, World!".data(using: .utf8)!
+        let blobHash = try await storage.store(blob: blob, privateKey: nil)
 
         let tree = Tree(entries: [
             .init(
@@ -87,20 +85,19 @@ final class ObjectsTests {
                 hash: blobHash
             ),
         ])
-        let treeHash = try await storage.store(tree, privateKey: nil)
+        let treeHash = try await storage.store(tree: tree, privateKey: nil)
         #expect(treeHash != "")
 
-        let treeObj = try await storage.retrieve(treeHash)
-        #expect(treeObj.kind == .tree)
-//        #expect(treeObj.content == tree.content)
+        let treeObj = try await storage.retrieve(tree: treeHash)
+        #expect(treeObj.entries.count == 1)
     }
 
     @Test("Commit storage")
     func commitStorage() async throws {
-        let blob = Blob(string: "Hello, World!")
-        let blobHash = try await storage.store(blob, privateKey: nil)
+        let blob = "Hello, World!".data(using: .utf8)!
+        let blobHash = try await storage.store(blob: blob, privateKey: nil)
         let tree = Tree(entries: [.init(mode: .normal, name: "README.md", hash: blobHash)])
-        let treeHash = try await storage.store(tree, privateKey: nil)
+        let treeHash = try await storage.store(tree: tree, privateKey: nil)
 
         let commitTimestamp = Date.now
         let commit = Commit(
@@ -108,26 +105,23 @@ final class ObjectsTests {
             message: "Initial commit",
             timestamp: commitTimestamp
         )
-        let commitHash = try await storage.store(commit, privateKey: nil)
+        let commitHash = try await storage.store(commit: commit, privateKey: nil)
         #expect(commitHash != "")
 
-        let commitObj = try await storage.retrieve(commitHash)
-        #expect(commitObj.kind == .commit)
-//        #expect(commitObj.content == commit.content)
+        let commitObj = try await storage.retrieve(commit: commitHash)
+        #expect(commitObj.tree == treeHash)
     }
 
     @Test("Hashing")
     func hashing() async throws {
         let content = "Hello, World!"
-        let blob = Blob(string: content)
+        let blob = content.data(using: .utf8)!
         let url = baseURL/"test.txt"
 
         try FileManager.default.mkdir(url)
         try content.write(to: url, atomically: true, encoding: .utf8)
 
-        let blobHeader = await storage.header(kind: "blob", count: blob.content.count)
-        let blobData = blobHeader + blob.content
-        let blobHash = await storage.hashCompute(blobData)
+        let blobHash = await storage.computeHash(blob)
 
         let memoryMappedHash = try await storage.hash(for: url)
         #expect(blobHash == memoryMappedHash)

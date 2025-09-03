@@ -1,7 +1,6 @@
 import Foundation
 
-public struct Tree: Storable, Codable, Sendable {
-    public let kind: Envelope.Kind
+public struct Tree: Sendable {
     public let entries: [Entry]
 
     public struct Entry: Codable, Identifiable, Sendable {
@@ -20,13 +19,10 @@ public struct Tree: Storable, Codable, Sendable {
     }
 
     public init(entries: [Entry]) {
-        self.kind = .tree
         self.entries = entries
     }
 
     public init(data: Data) throws {
-        self.kind = .tree
-
         let lines = String(data: data, encoding: .utf8)!
             .split(separator: "\n")
             .filter { !$0.isEmpty }
