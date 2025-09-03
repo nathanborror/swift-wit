@@ -41,15 +41,18 @@ public actor Repo {
 
     // MARK: Convenience
 
-    public func commit(ref: Ref = .head) async throws -> (String, Commit) {
+    public func commit(ref: Ref = .head) async throws -> Commit {
         let hash = try await retrieveHash(ref: ref)
         let commit = try await objects.retrieve(commit: hash)
-        return (hash, commit)
+        return commit
     }
 
-    public func tree(hash: String) async throws -> (String, Tree) {
-        let tree = try await objects.retrieve(tree: hash)
-        return (hash, tree)
+    public func tree(hash: String) async throws -> Tree {
+        try await objects.retrieve(tree: hash)
+    }
+
+    public func blob(hash: String) async throws -> Data {
+        try await objects.retrieve(blob: hash)
     }
 
     // MARK: Working with files
