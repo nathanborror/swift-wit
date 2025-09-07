@@ -482,10 +482,15 @@ public actor Repo {
 
     // MARK: Configuration
 
-    /// Returns the config file as a string dictionary.
+    /// Returns the decoded Config object from the local directory.
     public func configRead(path: String) async throws -> Config {
-        let data = try await local.get(path: path)
+        let data = try await configReadData(path: path)
         return ConfigDecoder().decode(data)
+    }
+
+    /// Returns the config data from the local directory.
+    public func configReadData(path: String) async throws -> Data {
+        try await local.get(path: path)
     }
 
     /// Merges in the given config values to the config file and optionally uploads the file to the given remote.
@@ -515,11 +520,15 @@ public actor Repo {
     public func configWrite(path: String, values: [String: Config.Section], remote: Remote? = nil) async throws {
         let newConfig = ConfigEncoder().encode(values)
         let newConfigData = newConfig.data(using: .utf8)!
-        try await local.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: nil)
+        try await configWriteData(path: path, data: newConfigData, remote: remote)
+    }
 
+    /// Writes the config data locally and to an optional remote.
+    public func configWriteData(path: String, data: Data, remote: Remote? = nil) async throws {
+        try await local.put(path: path, data: data, directoryHint: .notDirectory, privateKey: nil)
         let defaultRemote = try? await configRemoteDefault()
         if let remote = remote ?? defaultRemote {
-            try await remote.put(path: path, data: newConfigData, directoryHint: .notDirectory, privateKey: privateKey)
+            try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
         }
     }
 
