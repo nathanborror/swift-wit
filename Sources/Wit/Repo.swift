@@ -483,18 +483,22 @@ public actor Repo {
     // MARK: Configuration
 
     /// Returns the decoded Config object from the local directory.
-    public func configRead(path: String) async throws -> Config {
-        let data = try await configReadData(path: path)
+    public func configRead(path: String, privateKey: Curve25519.Signing.PrivateKey? = nil) async throws -> Config {
+        let data = try await configReadData(path: path, privateKey: privateKey)
         return ConfigDecoder().decode(data)
     }
 
     /// Returns the config data from the local directory.
-    public func configReadData(path: String) async throws -> Data {
-        try await local.get(path: path)
+    public func configReadData(path: String, privateKey: Curve25519.Signing.PrivateKey? = nil) async throws -> Data {
+        let data = try await local.get(path: path)
+        if let privateKey {
+            return try decrypt(data, privateKey: privateKey)
+        }
+        return data
     }
 
     /// Merges in the given config values to the config file and optionally uploads the file to the given remote.
-    public func configMerge(path: String, values: [String: Config.Section], remote: Remote? = nil) async throws {
+    public func configMerge(path: String, values: [String: Config.Section], privateKey: Curve25519.Signing.PrivateKey? = nil, remote: Remote? = nil) async throws {
         let config = try? await configRead(path: path)
         var mergedSections = config?.sections ?? [:]
 
@@ -512,23 +516,30 @@ public actor Repo {
         try await configWrite(
             path: path,
             values: mergedSections,
+            privateKey: privateKey,
             remote: remote
         )
     }
 
     /// Writes the given config values to the config file and optionally uploads the file to the given remote.
-    public func configWrite(path: String, values: [String: Config.Section], remote: Remote? = nil) async throws {
+    public func configWrite(path: String, values: [String: Config.Section], privateKey: Curve25519.Signing.PrivateKey? = nil, remote: Remote? = nil) async throws {
         let newConfig = ConfigEncoder().encode(values)
         let newConfigData = newConfig.data(using: .utf8)!
-        try await configWriteData(path: path, data: newConfigData, remote: remote)
+        try await configWriteData(path: path, data: newConfigData, privateKey: privateKey, remote: remote)
     }
 
     /// Writes the config data locally and to an optional remote.
-    public func configWriteData(path: String, data: Data, remote: Remote? = nil) async throws {
-        try await local.put(path: path, data: data, directoryHint: .notDirectory, privateKey: nil)
+    public func configWriteData(path: String, data: Data, privateKey: Curve25519.Signing.PrivateKey? = nil, remote: Remote? = nil) async throws {
+        let preparedData: Data
+        if let privateKey {
+            preparedData = try encrypt(data, privateKey: privateKey)
+        } else {
+            preparedData = data
+        }
+        try await local.put(path: path, data: preparedData, directoryHint: .notDirectory, privateKey: nil)
         let defaultRemote = try? await configRemoteDefault()
         if let remote = remote ?? defaultRemote {
-            try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
+            try await remote.put(path: path, data: preparedData, directoryHint: .notDirectory, privateKey: privateKey)
         }
     }
 
@@ -905,5 +916,73 @@ extension Repo {
             "message": message,
         ]
         NotificationCenter.default.post(name: Self.statusNotification, object: nil, userInfo: userInfo)
+    }
+}
+
+// MARK: - Encyrption
+
+extension Repo {
+
+    private func decrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+        var cursor = 0
+        let hdrLenBE = data[cursor..<cursor+4]; cursor += 4
+        let hdrLen = Int(hdrLenBE.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian })
+        let headerData = data[cursor..<cursor+hdrLen]; cursor += hdrLen
+        let header = try JSONDecoder().decode(EncryptionHeader.self, from: headerData)
+
+        precondition(header.magic == "WILDCRYPT" && header.version == 1)
+
+        let key = issueSymmetricKey(privateKey, salt: header.salt)
+        let nonce = try ChaChaPoly.Nonce(data: header.nonce)
+
+        // Remaining = ciphertext||tag (16-byte tag)
+        let ct = data[cursor..<(data.count - 16)]
+        let tag = data[(data.count - 16)..<data.count]
+
+        let box = try ChaChaPoly.SealedBox(nonce: nonce, ciphertext: ct, tag: tag)
+        return try ChaChaPoly.open(box, using: key)
+    }
+
+    private func encrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+        let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+        let key  = issueSymmetricKey(privateKey, salt: salt)
+
+        let nonce = try ChaChaPoly.Nonce(data: Data((0..<12).map { _ in UInt8.random(in: 0...255) }))
+        let sealed = try ChaChaPoly.seal(data, using: key, nonce: nonce)
+
+        let header = EncryptionHeader(magic: "WILDCRYPT", version: 1, salt: salt, nonce: Data(nonce))
+        let headerData = try JSONEncoder().encode(header)
+
+        // Write [varint headerLen][header][ciphertext||tag]
+        var secrets = Data()
+        var headerLen = UInt32(headerData.count).bigEndian
+        withUnsafeBytes(of: &headerLen) { secrets.append(contentsOf: $0) }
+        secrets.append(headerData)
+        secrets.append(sealed.ciphertext)
+        secrets.append(sealed.tag)
+        return secrets
+    }
+
+    private func issueSymmetricKey(_ signingKey: Curve25519.Signing.PrivateKey, salt: Data) -> SymmetricKey {
+        let raw = signingKey.rawRepresentation
+        let seed = raw.prefix(32)
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: .init(data: seed),
+            salt: salt,
+            info: Data("Wild Encryption v1".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    private func randomString(length: Int = 16) -> String {
+        let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        return String((0..<length).map { _ in letters.randomElement()! })
+    }
+
+    struct EncryptionHeader: Codable {
+        let magic: String
+        let version: UInt8
+        let salt: Data
+        let nonce: Data
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import CryptoKit
 @testable import Wit
 
 @Suite("Config Tests")
@@ -99,5 +100,20 @@ final class ConfigTests {
         config[section: "user"] = nil
         #expect(config["user.name"] == nil)
         #expect(config[section: "user"] == nil)
+    }
+
+    @Test("Encryption")
+    func encryption() async throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+
+        var config = Config()
+        config["core.version"] = "0.1"
+        config["user.password"] = "abc123"
+
+        let (path, repo) = NewRepo()
+        try await repo.configWrite(path: ".wild/secrets", values: config.sections, privateKey: privateKey)
+
+        let secrets = try await repo.configRead(path: ".wild/secrets", privateKey: privateKey)
+        #expect(secrets["user.password"] == "abc123")
     }
 }
