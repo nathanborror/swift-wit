@@ -104,16 +104,14 @@ final class ConfigTests {
 
     @Test("Encryption")
     func encryption() async throws {
-        let privateKey = Curve25519.Signing.PrivateKey()
-
         var config = Config()
         config["core.version"] = "0.1"
         config["user.password"] = "abc123"
 
-        let (path, repo) = NewRepo()
-        try await repo.configWrite(path: ".wild/secrets", values: config.sections, privateKey: privateKey)
+        let (_, repo) = NewRepo()
+        try await repo.configWrite(path: ".wild/secrets", values: config.sections, encrypt: true)
 
-        let secrets = try await repo.configRead(path: ".wild/secrets", privateKey: privateKey)
+        let secrets = try await repo.configRead(path: ".wild/secrets", decrypt: true)
         #expect(secrets["user.password"] == "abc123")
     }
 }

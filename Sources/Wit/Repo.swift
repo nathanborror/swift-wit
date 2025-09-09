@@ -17,6 +17,7 @@ public actor Repo {
         case missingCommonAncestor
         case missingHash
         case missingRemote
+        case missingPrivateKey
     }
 
     public enum Ref: Sendable {
@@ -483,25 +484,27 @@ public actor Repo {
     // MARK: Configuration
 
     /// Returns the decoded Config object from the local directory.
-    public func configRead(path: String, privateKey: Curve25519.Signing.PrivateKey? = nil) async throws -> Config {
-        let data = try await configReadData(path: path, privateKey: privateKey)
+    public func configRead(path: String, decrypt: Bool = false) async throws -> Config {
+        let data = try await configReadData(path: path, decrypt: decrypt)
         return ConfigDecoder().decode(data)
     }
 
     /// Returns the config data from the local directory.
-    public func configReadData(path: String, privateKey: Curve25519.Signing.PrivateKey? = nil) async throws -> Data {
+    public func configReadData(path: String, decrypt: Bool = false) async throws -> Data {
         let data = try await local.get(path: path)
-        if let privateKey {
-            return try decrypt(data, privateKey: privateKey)
+        if decrypt {
+            guard let privateKey else {
+                throw Error.missingPrivateKey
+            }
+            return try dataDecrypt(data, privateKey: privateKey)
         }
         return data
     }
 
     /// Merges in the given config values to the config file and optionally uploads the file to the given remote.
-    public func configMerge(path: String, values: [String: Config.Section], privateKey: Curve25519.Signing.PrivateKey? = nil, remote: Remote? = nil) async throws {
+    public func configMerge(path: String, values: [String: Config.Section], encrypt: Bool = false, remote: Remote? = nil) async throws {
         let config = try? await configRead(path: path)
         var mergedSections = config?.sections ?? [:]
-
         for (section, newSection) in values {
             switch (mergedSections[section], newSection) {
             case (.dictionary(let oldDict), .dictionary(let newDict)):
@@ -512,27 +515,29 @@ public actor Repo {
                 mergedSections[section] = newSection
             }
         }
-
         try await configWrite(
             path: path,
             values: mergedSections,
-            privateKey: privateKey,
+            encrypt: encrypt,
             remote: remote
         )
     }
 
     /// Writes the given config values to the config file and optionally uploads the file to the given remote.
-    public func configWrite(path: String, values: [String: Config.Section], privateKey: Curve25519.Signing.PrivateKey? = nil, remote: Remote? = nil) async throws {
+    public func configWrite(path: String, values: [String: Config.Section], encrypt: Bool = false, remote: Remote? = nil) async throws {
         let newConfig = ConfigEncoder().encode(values)
         let newConfigData = newConfig.data(using: .utf8)!
-        try await configWriteData(path: path, data: newConfigData, privateKey: privateKey, remote: remote)
+        try await configWriteData(path: path, data: newConfigData, encrypt: encrypt, remote: remote)
     }
 
     /// Writes the config data locally and to an optional remote.
-    public func configWriteData(path: String, data: Data, privateKey: Curve25519.Signing.PrivateKey? = nil, remote: Remote? = nil) async throws {
+    public func configWriteData(path: String, data: Data, encrypt: Bool = false, remote: Remote? = nil) async throws {
         let preparedData: Data
-        if let privateKey {
-            preparedData = try encrypt(data, privateKey: privateKey)
+        if encrypt {
+            guard let privateKey else {
+                throw Error.missingPrivateKey
+            }
+            preparedData = try dataEncrypt(data, privateKey: privateKey)
         } else {
             preparedData = data
         }
@@ -923,7 +928,7 @@ extension Repo {
 
 extension Repo {
 
-    private func decrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+    private func dataDecrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
         var cursor = 0
         let hdrLenBE = data[cursor..<cursor+4]; cursor += 4
         let hdrLen = Int(hdrLenBE.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian })
@@ -943,7 +948,7 @@ extension Repo {
         return try ChaChaPoly.open(box, using: key)
     }
 
-    private func encrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+    private func dataEncrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
         let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
         let key  = issueSymmetricKey(privateKey, salt: salt)
 

@@ -1,9 +1,11 @@
 import Foundation
+import CryptoKit
 @testable import Wit
 
 func NewRepo() -> (String, Repo) {
     let workingPath = UUID().uuidString
-    let repo = Repo(path: workingPath)
+    let privateKey = Curve25519.Signing.PrivateKey()
+    let repo = Repo(path: workingPath, privateKey: privateKey)
     return (workingPath, repo)
 }
 
