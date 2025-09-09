@@ -7,6 +7,7 @@ private let logger = Logger(subsystem: "Repo", category: "Wit")
 public actor Repo {
     public static let defaultPath = ".wild"
     public static let defaultConfigPath = "\(defaultPath)/config"
+    public static let defaultSecretsPath = "\(defaultPath)/secrets"
     public static let defaultObjectsPath = "\(defaultPath)/objects"
     public static let defaultHeadPath = "\(defaultPath)/HEAD"
     public static let defaultLogsPath = "\(defaultPath)/logs"
@@ -152,6 +153,7 @@ public actor Repo {
         let manager = FileManager.default
 
         try manager.touch(localURL/Self.defaultConfigPath)
+        try manager.touch(localURL/Self.defaultSecretsPath)
         try manager.touch(localURL/Self.defaultHeadPath)
         try manager.touch(localURL/Self.defaultLogsPath)
 
@@ -422,6 +424,7 @@ public actor Repo {
         // Upload current HEAD, logs and config to remote
         for path in [
             Self.defaultConfigPath,
+            Self.defaultSecretsPath,
             Self.defaultLogsPath,
             Self.defaultHeadPath,
         ] {
