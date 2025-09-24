@@ -121,25 +121,33 @@ public actor Objects {
         var seen = Set<Key>()
         var stack: [Key] = [.init(hash: hash, kind: .commit)]
 
-        while let hash = stack.popLast() {
-            if seen.contains(hash) { continue }
-            seen.insert(hash)
-            if let commit = try? await retrieve(commit: hash.hash) {
-                if !commit.tree.isEmpty {
-                    stack.append(.init(hash: commit.tree, kind: .tree))
-                }
-                if let parent = commit.parent {
-                    stack.append(.init(hash: parent, kind: .commit))
-                }
-            } else if let tree = try? await retrieve(tree: hash.hash) {
-                for entry in tree.entries {
-                    switch entry.mode {
-                    case .directory:
-                        stack.append(.init(hash: entry.hash, kind: .tree))
-                    case .executable, .normal, .symbolicLink:
-                        stack.append(.init(hash: entry.hash, kind: .blob))
+        while let key = stack.popLast() {
+            if seen.contains(key) { continue }
+            seen.insert(key)
+
+            switch key.kind {
+            case .commit:
+                if let commit = try? await retrieve(commit: key.hash) {
+                    if let parentHash = commit.parent {
+                        stack.append(.init(hash: parentHash, kind: .commit))
+                    }
+                    if !commit.tree.isEmpty {
+                        stack.append(.init(hash: commit.tree, kind: .tree))
                     }
                 }
+            case .tree:
+                if let tree = try? await retrieve(tree: key.hash) {
+                    for entry in tree.entries {
+                        switch entry.mode {
+                        case .directory:
+                            stack.append(.init(hash: entry.hash, kind: .tree))
+                        case .executable, .normal, .symbolicLink:
+                            stack.append(.init(hash: entry.hash, kind: .blob))
+                        }
+                    }
+                }
+            case .blob:
+                continue
             }
         }
         return seen

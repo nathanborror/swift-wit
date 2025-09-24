@@ -89,24 +89,32 @@ final class RemoteTests {
 
         // ClientA: First commit
         try await clientA.write("This is some foo", path: "foo.txt")
-        let clientA_commit1 = try await clientA.commit("First commit")
+        try await clientA.commit("First commit")
+        try await clientA.push(remote)
+
+        try await clientA.write("This is some bar", path: "bar.txt")
+        try await clientA.commit("Second commit")
+        try await clientA.push(remote)
+
+        try await clientA.write("This is some baz", path: "baz/baz.txt")
+        let clientA_commit3 = try await clientA.commit("Third commit")
         try await clientA.push(remote)
 
         // ClientB: Clone
         try await clientB.clone(remote)
         let clientB_HEAD = await clientB.readHEAD()
-        #expect(clientB_HEAD == clientA_commit1)
+        #expect(clientB_HEAD == clientA_commit3)
 
         // ClientA: Second commit
         try await clientA.write("This is some bar", path: "bar.txt")
         try await clientA.commit("Second commit")
         try await clientA.push(remote)
         let clientA_logs = try await clientA.logs()
-        #expect(clientA_logs.count == 2)
+        #expect(clientA_logs.count == 4)
 
         try await clientB.rebase(remote)
         let logs = try await clientB.logs()
-        #expect(logs.count == 2)
+        #expect(logs.count == 4)
     }
 
     @Test("Config parsing")
