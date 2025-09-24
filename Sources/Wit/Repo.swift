@@ -19,6 +19,7 @@ public actor Repo {
         case missingHash
         case missingRemote
         case missingPrivateKey
+        case missingData
     }
 
     public enum Ref: Sendable {
@@ -932,6 +933,9 @@ extension Repo {
 extension Repo {
 
     private func dataDecrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+        guard !data.isEmpty else {
+            throw Error.missingData
+        }
         var cursor = 0
         let hdrLenBE = data[cursor..<cursor+4]; cursor += 4
         let hdrLen = Int(hdrLenBE.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian })
@@ -952,6 +956,9 @@ extension Repo {
     }
 
     private func dataEncrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+        guard !data.isEmpty else {
+            throw Error.missingData
+        }
         let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
         let key  = issueSymmetricKey(privateKey, salt: salt)
 
