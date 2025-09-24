@@ -114,6 +114,7 @@ public actor Repo {
         // Copy necessary files
         for path in [
             Self.defaultConfigPath,
+            Self.defaultSecretsPath,
             Self.defaultLogsPath,
             Self.defaultIgnorePath,
         ] {
