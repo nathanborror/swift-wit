@@ -55,7 +55,7 @@ public actor Repo {
     }
 
     public func blob(hash: String) async throws -> Data {
-        try await objects.retrieve(blob: hash)
+        try await retrieveBlob(hash, remote: nil)
     }
 
     // MARK: Working with files
@@ -97,8 +97,8 @@ public actor Repo {
 
     // MARK: Start a working area
 
-    /// Clone a repository into a new directory. This is a shallow clone, only copies objects recursively referenced by HEAD.
-    public func clone(_ remote: Remote, bare: Bool = false) async throws {
+    /// Clone a repository into a new directory. If bare is true then a working directory will not be created.
+    public func clone(_ remote: Remote, bare: Bool = false, optimistic: Bool = false) async throws {
         try await initialize()
 
         let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
@@ -129,6 +129,10 @@ public actor Repo {
             guard try await !objects.exists(key: key) else {
                 continue
             }
+            // Optimistic clones skip downloading of blob data
+            if !optimistic && key.kind == .blob {
+                continue
+            }
             let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
@@ -144,7 +148,7 @@ public actor Repo {
 
         // Create working directory
         let commit = try await objects.retrieve(commit: remoteHead)
-        try await buildWorkingDirectoryRecursively(commit.tree)
+        try await buildWorkingDirectoryRecursively(commit.tree, remote: remote)
 
         let remoteURLString = await remote.baseURL.absoluteString
         await postStatusNotification("Cloned '\(remoteURLString)'")
@@ -372,8 +376,8 @@ public actor Repo {
     }
 
     /// Checkouts a commit by changing the HEAD to the given commit and rebuilding the working directory.
-    public func checkout(_ commitHash: String) async throws {
-        try await updateWorkingDirectory(to: commitHash)
+    public func checkout(_ commitHash: String, remote: Remote? = nil) async throws {
+        try await updateWorkingDirectory(to: commitHash, remote: remote)
         try await writeHEAD(commitHash)
         await postStatusNotification("Checked out commit (\(commitHash.prefix(7)))")
     }
@@ -420,7 +424,6 @@ public actor Repo {
                 let blob = try await objects.retrieve(blob: key.hash)
                 let _ = try await remoteObjects.store(blob: blob, privateKey: privateKey)
             }
-
         }
 
         // Upload current HEAD, logs and config to remote
@@ -798,19 +801,34 @@ extension Repo {
     }
 
     /// Build a directory of files from the object store relative to the given tree hash. Recurse down the tree to build a complete directory structure.
-    func buildWorkingDirectoryRecursively(_ treeHash: String, path: String = "") async throws {
+    func buildWorkingDirectoryRecursively(_ treeHash: String, path: String = "", remote: Remote?) async throws {
         let tree = try await objects.retrieve(tree: treeHash)
         for entry in tree.entries {
             switch entry.mode {
             case .directory:
                 let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
-                try await buildWorkingDirectoryRecursively(entry.hash, path: path)
+                try await buildWorkingDirectoryRecursively(entry.hash, path: path, remote: remote)
             case .normal, .executable, .symbolicLink:
-                let data = try await objects.retrieve(blob: entry.hash)
+                let data = try await retrieveBlob(entry.hash, remote: remote)
                 let fileURL = localURL/path/entry.name
                 try FileManager.default.mkdir(fileURL)
                 try data.write(to: fileURL)
             }
+        }
+    }
+
+    func retrieveBlob(_ hash: String, remote: Remote?) async throws -> Data {
+        if try await objects.exists(key: .init(hash: hash, kind: .blob)) {
+            return try await objects.retrieve(blob: hash)
+        } else {
+            let defaultRemote = try? await configRemoteDefault()
+            guard let remote = remote ?? defaultRemote else {
+                throw Error.missingRemote
+            }
+            let path = await objects.objectPath(.init(hash: hash, kind: .blob))
+            let data = try await remote.get(path: path)
+            try await write(data, path: path)
+            return data
         }
     }
 }
@@ -898,7 +916,7 @@ extension Repo {
 
     // TODO: Review generated code
     // Update working directory to match a specific commit
-    private func updateWorkingDirectory(to commitHash: String) async throws {
+    private func updateWorkingDirectory(to commitHash: String, remote: Remote?) async throws {
         let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
 
         // Clear current working directory (except .wild)
@@ -909,7 +927,7 @@ extension Repo {
 
         // Build new working directory
         let commit = try await objects.retrieve(commit: commitHash)
-        try await buildWorkingDirectoryRecursively(commit.tree)
+        try await buildWorkingDirectoryRecursively(commit.tree, remote: remote)
     }
 }
 
