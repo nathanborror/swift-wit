@@ -17,18 +17,18 @@ final class ConfigTests {
                 host = http://localhost:8080
             [remote:example]
                 host = http://example.com
-            [files]
-                foo.md
-                bar.md
+            [channels]
+                #foo
+                #bar
             """
 
         let config = ConfigDecoder().decode(input.data(using: .utf8)!)
         #expect(config["core.version"] == "0.1")
         #expect(config["user.name"] == "Test User")
         #expect(config["remote:local.host"] == "http://localhost:8080")
-        #expect(config[list: "files"]?.count == 2)
+        #expect(config[list: "channels"]?.count == 2)
         #expect(config[dict: "core"] == ["version": "0.1"])
-        #expect(config["files"] == "foo.md\nbar.md")
+        #expect(config["channels"] == "#foo\n#bar")
 
         let remotes = config[prefix: "remote"]
         #expect(remotes.sections.count == 2)
