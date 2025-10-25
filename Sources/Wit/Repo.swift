@@ -218,6 +218,40 @@ public actor Repo {
         return out
     }
 
+    /// List tracked and untracked files.
+    public func ls(_ ref: Ref = .head) async throws -> [File] {
+        let commitHash = try? await retrieveHash(ref: ref)
+
+        // Gather file references within the commit
+        let fileReferences: [String: File]
+        if let commitHash {
+            let commit = try await objects.retrieve(commit: commitHash)
+            let tree = try await objects.retrieve(tree: commit.tree)
+            fileReferences = try await objects.retrieveFileReferencesRecursive(tree)
+        } else {
+            fileReferences = [:]
+        }
+
+        // Gather file references within the working directory
+        let fileReferencesCurrent = try await retrieveCurrentFileReferences()
+
+        // Compare commit references with current files and find additions and modifications
+        var out: [File] = []
+        for (path, file) in fileReferencesCurrent {
+            if let previousRef = fileReferences[path] {
+                if previousRef.hash != file.hash {
+                    out.append(file.apply(state: .modified, previousHash: previousRef.hash))
+                } else {
+                    out.append(file.apply(previousHash: previousRef.hash))
+                }
+            } else {
+                out.append(file.apply(state: .added, previousHash: nil))
+            }
+        }
+
+        return out
+    }
+
     /// Show commit logs.
     public func logs() async throws -> [Log] {
         guard let contents = await retrieveCommitLogFile() else {

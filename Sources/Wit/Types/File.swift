@@ -23,7 +23,7 @@ public struct File: Identifiable, Sendable {
         self.mode = mode
     }
 
-    public func apply(state: State, previousHash: String?) -> File {
+    public func apply(state: State? = nil, previousHash: String?) -> File {
         .init(
             path: self.path,
             hash: self.hash,

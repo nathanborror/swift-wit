@@ -112,6 +112,9 @@ final class RepoTests {
         let status2_WithChanges = try await repo.status()
         #expect(status2_WithChanges.isEmpty == true)
         #expect(status2_WithChanges.count == 0)
+
+        let ls = try await repo.ls()
+        #expect(ls.count == 2)
     }
 
     @Test("Commit changes")
