@@ -27,25 +27,8 @@ final class RemoteTests {
         self.clientA = Repo(path: clientA_workingPath, privateKey: privateKey)
         self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
 
-        // Establish public key
-        let publicKey = privateKey.publicKey.rawRepresentation.base64EncodedString()
-
         // Initialize
         try await clientA.initialize()
-        try await clientA.configMerge(
-            path: Repo.defaultConfigPath,
-            values: [
-                "core": .dictionary([
-                    "publicKey": publicKey
-                ]),
-                "user": .dictionary([
-                    "id": identity,
-                    "name": "Alice",
-                    "email": "alice@example.com",
-                    "username": "alice",
-                ]),
-            ]
-        )
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
@@ -115,11 +98,5 @@ final class RemoteTests {
         try await clientB.rebase(remote)
         let logs = try await clientB.logs()
         #expect(logs.count == 4)
-    }
-
-    @Test("Config parsing")
-    func configParsing() async throws {
-        let config = try await clientA.configRead(path: Repo.defaultConfigPath)
-        #expect(config["core.version"] == "0.1")
     }
 }

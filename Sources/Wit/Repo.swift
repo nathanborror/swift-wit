@@ -27,12 +27,14 @@ public actor Repo {
         case commit(String)
     }
 
+    let config: Config
     let localURL: URL
     let local: any Remote
     let objects: Objects
     let privateKey: Remote.PrivateKey?
 
-    public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
+    public init(config: Config = .empty, path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
+        self.config = config
         self.localURL = URL.documentsDirectory.appending(path: path)
         self.privateKey = privateKey
         self.local = RemoteDisk(baseURL: localURL)
@@ -139,8 +141,7 @@ public actor Repo {
         }
 
         // Copy user picture
-        let config = try await configRead(path: Self.defaultConfigPath)
-        if let filename = config["user.picture"], let data = try? await remote.get(path: "\(Self.defaultPath)/\(filename)") {
+        if let filename = config.picture, let data = try? await remote.get(path: "\(Self.defaultPath)/\(filename)") {
             try await write(data, path: "\(Self.defaultPath)/\(filename)")
         }
 
@@ -165,17 +166,6 @@ public actor Repo {
 
         try manager.mkdir(localURL/Self.defaultObjectsPath)
         try manager.mkdir(localURL/Self.defaultPath/"remotes"/"origin")
-
-        // Determine remote (nil is okay)
-        let defaultRemote = try? await configRemoteDefault()
-        let remote = remote ?? defaultRemote
-
-        // Set current version
-        try await configMerge(
-            path: Self.defaultConfigPath,
-            values: ["core": .dictionary(["version": "0.1"])],
-            remote: remote
-        )
 
         await postStatusNotification("Initialized repository")
     }
@@ -308,7 +298,7 @@ public actor Repo {
     /// Reapply commits on top of HEAD.
     @discardableResult
     public func rebase(_ remote: Remote? = nil) async throws -> String {
-        let defaultRemote = try? await configRemoteDefault()
+        let defaultRemote = retrieveRemoteDefault()
         guard let remote = remote ?? defaultRemote else {
             throw Error.missingRemote
         }
@@ -420,7 +410,7 @@ public actor Repo {
 
     /// Update remote along with associated objects.
     public func push(_ remote: Remote? = nil) async throws {
-        let defaultRemote = try? await configRemoteDefault()
+        let defaultRemote = retrieveRemoteDefault()
         guard let remote = remote ?? defaultRemote else {
             throw Error.missingRemote
         }
@@ -484,7 +474,7 @@ public actor Repo {
 
     /// Download objects from another repository.
     public func fetch(_ remote: Remote? = nil) async throws {
-        let defaultRemote = try? await configRemoteDefault()
+        let defaultRemote = retrieveRemoteDefault()
         guard let remote = remote ?? defaultRemote else {
             throw Error.missingRemote
         }
@@ -523,99 +513,6 @@ public actor Repo {
         }
     }
 
-    // MARK: Configuration
-
-    /// Returns the decoded Config object from the local directory.
-    public func configRead(path: String, decrypt: Bool = false) async throws -> Config {
-        let data = try await configReadData(path: path, decrypt: decrypt)
-        return ConfigDecoder().decode(data)
-    }
-
-    /// Returns the config data from the local directory.
-    public func configReadData(path: String, decrypt: Bool = false) async throws -> Data {
-        let data = try await local.get(path: path)
-        if decrypt {
-            guard let privateKey else {
-                throw Error.missingPrivateKey
-            }
-            return try dataDecrypt(data, privateKey: privateKey)
-        }
-        return data
-    }
-
-    /// Merges in the given config values to the config file and optionally uploads the file to the given remote.
-    public func configMerge(path: String, values: [String: Config.Section], encrypt: Bool = false, remote: Remote? = nil) async throws {
-        let config = try? await configRead(path: path)
-        var mergedSections = config?.sections ?? [:]
-        for (section, newSection) in values {
-            switch (mergedSections[section], newSection) {
-            case (.dictionary(let oldDict), .dictionary(let newDict)):
-                // Merge dictionaries, prefer new values
-                mergedSections[section] = .dictionary(oldDict.merging(newDict) { _, new in new })
-            default:
-                // For arrays, or replacing an existing section of a different type, just set it
-                mergedSections[section] = newSection
-            }
-        }
-        try await configWrite(
-            path: path,
-            values: mergedSections,
-            encrypt: encrypt,
-            remote: remote
-        )
-    }
-
-    /// Writes the given config values to the config file and optionally uploads the file to the given remote.
-    public func configWrite(path: String, values: [String: Config.Section], encrypt: Bool = false, remote: Remote? = nil) async throws {
-        let newConfig = ConfigEncoder().encode(values)
-        let newConfigData = newConfig.data(using: .utf8)!
-        try await configWriteData(path: path, data: newConfigData, encrypt: encrypt, remote: remote)
-    }
-
-    /// Writes the config data locally and to an optional remote.
-    public func configWriteData(path: String, data: Data, encrypt: Bool = false, remote: Remote? = nil) async throws {
-        let preparedData: Data
-        if encrypt {
-            guard let privateKey else {
-                throw Error.missingPrivateKey
-            }
-            preparedData = try dataEncrypt(data, privateKey: privateKey)
-        } else {
-            preparedData = data
-        }
-        try await local.put(path: path, data: preparedData, directoryHint: .notDirectory, privateKey: nil)
-        let defaultRemote = try? await configRemoteDefault()
-        if let remote = remote ?? defaultRemote {
-            try await remote.put(path: path, data: preparedData, directoryHint: .notDirectory, privateKey: privateKey)
-        }
-    }
-
-    /// Returns the default Remote if the `core.remote` property is set. This remote will get used when a remote parameter is nil.
-    public func configRemoteDefault() async throws -> Remote? {
-        let config = try await configRead(path: Self.defaultConfigPath)
-        guard let name = config["core.remote"] else { return nil }
-        guard case .dictionary(let values) = config[section: "remote:\(name)"] else { return nil }
-        switch values["kind"] {
-        case "wild":
-            guard
-                let host = values["host"],
-                let baseURL = URL(string: host)
-            else { return nil }
-            return RemoteHTTP(baseURL: baseURL)
-        case "s3":
-            guard
-                let bucket = values["bucket"],
-                let path = values["path"],
-                let region = values["region"],
-                let accessKey = values["accessKey"],
-                let secretKey = values["secretKey"]
-            else { return nil }
-            return RemoteS3(bucket: bucket, path: path, region: region, accessKey: accessKey, secretKey: secretKey)
-        default:
-            return nil
-        }
-    }
-
     // MARK: HEAD
 
     public func readHEAD() async -> String? {
@@ -636,6 +533,29 @@ public actor Repo {
 // MARK: - Private
 
 extension Repo {
+
+    /// Returns the default Remote if the `config.remoteDefault` property is set. This remote will get used when a remote parameter is nil.
+    public func retrieveRemoteDefault() -> Remote? {
+        guard let remoteDefault = config.remoteDefault else { return nil }
+        guard let remoteConfig = config.remotes[remoteDefault] else { return nil }
+        switch remoteConfig.kind {
+        case .wild:
+            guard
+                let host = remoteConfig.host,
+                let baseURL = URL(string: host)
+            else { return nil }
+            return RemoteHTTP(baseURL: baseURL)
+        case .s3:
+            guard
+                let bucket = remoteConfig.bucket,
+                let path = remoteConfig.path,
+                let region = remoteConfig.region,
+                let accessKey = remoteConfig.accessKey,
+                let secretKey = remoteConfig.secretKey
+            else { return nil }
+            return RemoteS3(bucket: bucket, path: path, region: region, accessKey: accessKey, secretKey: secretKey)
+        }
+    }
 
     func retrieveHash(ref: Ref) async throws -> String {
         switch ref {
@@ -855,7 +775,7 @@ extension Repo {
         if try await objects.exists(key: .init(hash: hash, kind: .blob)) {
             return try await objects.retrieve(blob: hash)
         } else {
-            let defaultRemote = try? await configRemoteDefault()
+            let defaultRemote = retrieveRemoteDefault()
             guard let remote = remote ?? defaultRemote else {
                 throw Error.missingRemote
             }
@@ -985,7 +905,7 @@ extension Repo {
 
 extension Repo {
 
-    private func dataDecrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+    public func dataDecrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
         guard !data.isEmpty else {
             throw Error.missingData
         }
@@ -1008,7 +928,7 @@ extension Repo {
         return try ChaChaPoly.open(box, using: key)
     }
 
-    private func dataEncrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+    public func dataEncrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
         guard !data.isEmpty else {
             throw Error.missingData
         }

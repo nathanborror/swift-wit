@@ -197,22 +197,4 @@ final class RepoTests {
         let commit2_FooEntry = commit2_Tree.entries.first { $0.name == "foo.txt" }!
         #expect(commit1_FooEntry.hash != commit2_FooEntry.hash, "'foo' directory tree should be different")
     }
-
-    @Test("Config")
-    func config() async throws {
-        let (_, repo) = NewRepo()
-        try await repo.initialize()
-
-        let config1 = try await repo.configRead(path: Repo.defaultConfigPath)
-        #expect(config1["core.version"] == "0.1")
-
-        try await repo.configMerge(path: Repo.defaultConfigPath, values: [
-            "core": .dictionary([
-                "version": ""
-            ])
-        ])
-
-        let config2 = try await repo.configRead(path: Repo.defaultConfigPath)
-        #expect(config2["core.version"] == nil)
-    }
 }
