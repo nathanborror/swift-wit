@@ -27,14 +27,12 @@ public actor Repo {
         case commit(String)
     }
 
-    let config: Config
     let localURL: URL
     let local: any Remote
     let objects: Objects
     let privateKey: Remote.PrivateKey?
 
-    public init(config: Config = .empty, path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
-        self.config = config
+    public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
         self.localURL = URL.documentsDirectory.appending(path: path)
         self.privateKey = privateKey
         self.local = RemoteDisk(baseURL: localURL)
@@ -56,8 +54,8 @@ public actor Repo {
         try await objects.retrieve(tree: hash)
     }
 
-    public func blob(hash: String) async throws -> Data {
-        try await retrieveBlob(hash, remote: nil)
+    public func blob(hash: String, remote: Remote) async throws -> Data {
+        try await retrieveBlob(hash, remote: remote)
     }
 
     // MARK: Working with files
@@ -140,11 +138,6 @@ public actor Repo {
             try await write(data, path: path)
         }
 
-        // Copy user picture
-        if let filename = config.picture, let data = try? await remote.get(path: "\(Self.defaultPath)/\(filename)") {
-            try await write(data, path: "\(Self.defaultPath)/\(filename)")
-        }
-
         if bare { return }
 
         // Create working directory
@@ -156,7 +149,7 @@ public actor Repo {
     }
 
     /// Create an empty repository.
-    public func initialize(_ remote: Remote? = nil) async throws {
+    public func initialize() async throws {
         let manager = FileManager.default
 
         try manager.touch(localURL/Self.defaultConfigPath)
@@ -297,12 +290,7 @@ public actor Repo {
 
     /// Reapply commits on top of HEAD.
     @discardableResult
-    public func rebase(_ remote: Remote? = nil) async throws -> String {
-        let defaultRemote = retrieveRemoteDefault()
-        guard let remote = remote ?? defaultRemote else {
-            throw Error.missingRemote
-        }
-
+    public func rebase(_ remote: Remote) async throws -> String {
         try await fetch(remote)
 
         let head = await readHEAD()
@@ -333,7 +321,7 @@ public actor Repo {
             try await write(remoteLogs, path: Self.defaultLogsPath)
 
             // Checkout and make the remote head the current HEAD
-            try await checkout(remoteHead)
+            try await checkout(remoteHead, remote: remote)
             return remoteHead
         }
 
@@ -394,13 +382,13 @@ public actor Repo {
         try await writeHEAD(finalHead)
 
         // Checkout and update final HEAD
-        try await checkout(finalHead)
+        try await checkout(finalHead, remote: remote)
         await postStatusNotification("Rebased \(localChain.count) commits on top of remote")
         return finalHead
     }
 
     /// Checkouts a commit by changing the HEAD to the given commit and rebuilding the working directory.
-    public func checkout(_ commitHash: String, remote: Remote? = nil) async throws {
+    public func checkout(_ commitHash: String, remote: Remote) async throws {
         try await updateWorkingDirectory(to: commitHash, remote: remote)
         try await writeHEAD(commitHash)
         await postStatusNotification("Checked out commit (\(commitHash.prefix(7)))")
@@ -409,12 +397,7 @@ public actor Repo {
     // MARK: Workflows
 
     /// Update remote along with associated objects.
-    public func push(_ remote: Remote? = nil) async throws {
-        let defaultRemote = retrieveRemoteDefault()
-        guard let remote = remote ?? defaultRemote else {
-            throw Error.missingRemote
-        }
-
+    public func push(_ remote: Remote) async throws {
         guard let head = await readHEAD() else {
             await postStatusNotification("Nothing to push — missing local HEAD")
             return
@@ -468,17 +451,12 @@ public actor Repo {
     }
 
     /// Fetch from and integrate with another repository.
-    public func pull(_ remote: Remote? = nil) async throws {
+    public func pull(_ remote: Remote) async throws {
         fatalError("not implemented")
     }
 
     /// Download objects from another repository.
-    public func fetch(_ remote: Remote? = nil) async throws {
-        let defaultRemote = retrieveRemoteDefault()
-        guard let remote = remote ?? defaultRemote else {
-            throw Error.missingRemote
-        }
-
+    public func fetch(_ remote: Remote) async throws {
         // Copy remote config
         if let remoteConfig = try? await remote.get(path: Self.defaultConfigPath) {
             try await write(remoteConfig, path: Self.defaultConfigPath)
@@ -533,29 +511,6 @@ public actor Repo {
 // MARK: - Private
 
 extension Repo {
-
-    /// Returns the default Remote if the `config.remoteDefault` property is set. This remote will get used when a remote parameter is nil.
-    public func retrieveRemoteDefault() -> Remote? {
-        guard let remoteDefault = config.remoteDefault else { return nil }
-        guard let remoteConfig = config.remotes[remoteDefault] else { return nil }
-        switch remoteConfig.kind {
-        case .wild:
-            guard
-                let host = remoteConfig.host,
-                let baseURL = URL(string: host)
-            else { return nil }
-            return RemoteHTTP(baseURL: baseURL)
-        case .s3:
-            guard
-                let bucket = remoteConfig.bucket,
-                let path = remoteConfig.path,
-                let region = remoteConfig.region,
-                let accessKey = remoteConfig.accessKey,
-                let secretKey = remoteConfig.secretKey
-            else { return nil }
-            return RemoteS3(bucket: bucket, path: path, region: region, accessKey: accessKey, secretKey: secretKey)
-        }
-    }
 
     func retrieveHash(ref: Ref) async throws -> String {
         switch ref {
@@ -755,7 +710,7 @@ extension Repo {
     }
 
     /// Build a directory of files from the object store relative to the given tree hash. Recurse down the tree to build a complete directory structure.
-    func buildWorkingDirectoryRecursively(_ treeHash: String, path: String = "", remote: Remote?) async throws {
+    func buildWorkingDirectoryRecursively(_ treeHash: String, path: String = "", remote: Remote) async throws {
         let tree = try await objects.retrieve(tree: treeHash)
         for entry in tree.entries {
             switch entry.mode {
@@ -771,14 +726,10 @@ extension Repo {
         }
     }
 
-    func retrieveBlob(_ hash: String, remote: Remote?) async throws -> Data {
+    func retrieveBlob(_ hash: String, remote: Remote) async throws -> Data {
         if try await objects.exists(key: .init(hash: hash, kind: .blob)) {
             return try await objects.retrieve(blob: hash)
         } else {
-            let defaultRemote = retrieveRemoteDefault()
-            guard let remote = remote ?? defaultRemote else {
-                throw Error.missingRemote
-            }
             let path = await objects.objectPath(.init(hash: hash, kind: .blob))
             let data = try await remote.get(path: path)
             try await write(data, path: path)
@@ -870,7 +821,7 @@ extension Repo {
 
     // TODO: Review generated code
     // Update working directory to match a specific commit
-    private func updateWorkingDirectory(to commitHash: String, remote: Remote?) async throws {
+    private func updateWorkingDirectory(to commitHash: String, remote: Remote) async throws {
         let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
 
         // Clear current working directory (except .wild)

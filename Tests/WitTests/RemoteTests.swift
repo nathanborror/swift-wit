@@ -3,7 +3,7 @@ import CryptoKit
 import Testing
 @testable import Wit
 
-let isServerRunning = false
+let isServerRunning = true
 
 @Suite("Remote Tests", .enabled(if: isServerRunning))
 final class RemoteTests {
