@@ -727,10 +727,11 @@ extension Repo {
     }
 
     func retrieveBlob(_ hash: String, remote: Remote) async throws -> Data {
-        if try await objects.exists(key: .init(hash: hash, kind: .blob)) {
+        let key = Objects.Key(hash: hash, kind: .blob)
+        if try await objects.exists(key: key) {
             return try await objects.retrieve(blob: hash)
         } else {
-            let path = await objects.objectPath(.init(hash: hash, kind: .blob))
+            let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
             try await write(data, path: path)
             return data
