@@ -73,6 +73,11 @@ public actor Repo {
         try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
+    public func write(_ data: Data) async throws -> String {
+        try await objects.store(blob: data, privateKey: privateKey)
+        // TODO: Push to remote(s)
+    }
+
     public func move(_ path: String, to toPath: String) async throws {
         try await local.move(path: path, to: toPath)
     }
