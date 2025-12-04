@@ -25,10 +25,15 @@ final class RemoteTests {
         self.clientB_workingPath = "B-\(identity)"
 
         self.clientA = Repo(path: clientA_workingPath, privateKey: privateKey)
-        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
-
-        // Initialize
         try await clientA.initialize()
+
+        let config = """
+            identifier = \(identity)
+            publicKey = \"\(privateKey.publicKey.rawRepresentation.base64EncodedString())\"
+            """
+        try await clientA.write(config, path: Repo.defaultConfigPath)
+
+        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
