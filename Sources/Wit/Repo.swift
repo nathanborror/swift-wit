@@ -60,22 +60,29 @@ public actor Repo {
 
     // MARK: Working with files
 
+    /// Reads data from the path in the working directory.
     public func read(_ path: String) async throws -> Data {
         try await local.get(path: path)
     }
 
+    /// Writes string to the path in the working directory.
     public func write(_ string: String?, path: String) async throws {
         guard let string, let data = string.data(using: .utf8) else { return }
         try await write(data, path: path)
     }
 
+    /// Writes data to the path in the  working directory.
     public func write(_ data: Data, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
         try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func write(_ data: Data) async throws -> String {
-        try await objects.store(blob: data, privateKey: privateKey)
-        // TODO: Push to remote(s)
+    /// Writes data to object store directly rather than writes to the working directory.
+    public func writeToStore(_ data: Data, remote: Remote? = nil) async throws -> String {
+        if let remote {
+            let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
+            _ = try await remoteObjects.store(blob: data, privateKey: privateKey)
+        }
+        return try await objects.store(blob: data, privateKey: privateKey)
     }
 
     public func move(_ path: String, to toPath: String) async throws {
