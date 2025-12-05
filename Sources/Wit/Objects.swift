@@ -45,6 +45,13 @@ public actor Objects {
         return hash
     }
 
+    // MARK: Deletion
+
+    public func deletePermanently(hash: String, privateKey: Remote.PrivateKey?) async throws {
+        let path = objectPath(.init(hash: hash, kind: .blob))
+        try await remote.delete(path: path, privateKey: privateKey)
+    }
+
     // MARK: Retrieve
 
     public func retrieve(commit hash: String) async throws -> Commit {

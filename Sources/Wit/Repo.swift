@@ -85,12 +85,22 @@ public actor Repo {
         return try await objects.store(blob: data, privateKey: privateKey)
     }
 
-    public func move(_ path: String, to toPath: String) async throws {
-        try await local.move(path: path, to: toPath)
-    }
-
+    /// Deletes file from working directory.
     public func delete(_ path: String) async throws {
         try await local.delete(path: path, privateKey: privateKey)
+    }
+
+    /// Permanently deletes blob from local store and remote if given.
+    public func deleteFromStore(_ hash: String, remote: Remote? = nil) async throws {
+        if let remote {
+            let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
+            try await remoteObjects.deletePermanently(hash: hash, privateKey: privateKey)
+        }
+        try await objects.deletePermanently(hash: hash, privateKey: privateKey)
+    }
+
+    public func move(_ path: String, to toPath: String) async throws {
+        try await local.move(path: path, to: toPath)
     }
 
     public func localURL(_ path: String) -> URL {
