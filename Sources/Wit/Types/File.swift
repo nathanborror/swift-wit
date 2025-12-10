@@ -51,7 +51,8 @@ extension FilePath {
     public func deletingLastPath() -> FilePath {
         let url = URL(fileURLWithPath: self)
         let dir = url.deletingLastPathComponent()
-        let path = dir.relativePath.trimmingPrefix(".")
+        let path = dir.relativePath
+        guard path != "." else { return "" }
         return .init(path)
     }
 
