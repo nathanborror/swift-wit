@@ -28,8 +28,10 @@ final class RemoteTests {
         try await clientA.initialize()
 
         let config = """
-            identifier = \(identity)
-            publicKey = \"\(privateKey.publicKey.rawRepresentation.base64EncodedString())\"
+            Date: \(Date.now.toRFC1123)
+            Content-Type: multipart/x-wild-config; boundary="config"
+            Wild-Identifier: \(identity)
+            Wild-Public-Key: \(privateKey.publicKey.rawRepresentation.base64EncodedString())
             """
         try await clientA.write(config, path: Repo.defaultConfigPath)
 
@@ -90,7 +92,7 @@ final class RemoteTests {
 
         // ClientB: Clone
         try await clientB.clone(remote)
-        let clientB_HEAD = await clientB.readHEAD()
+        let clientB_HEAD = await clientB.readHEAD(remote: clientB.local)
         #expect(clientB_HEAD == clientA_commit3)
 
         // ClientA: Second commit

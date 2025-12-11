@@ -1,4 +1,5 @@
 import Foundation
+import MIME
 
 public struct Commit: Sendable {
     public let tree: String
@@ -14,43 +15,34 @@ public struct Commit: Sendable {
     }
 
     public init(data: Data) throws {
-        var tree: String?
-        var parent: String?
-        var timestamp: Date?
-        var message: [String] = []
+        let content = try MIMEParser.parse(data)
+        
+        self.tree = content.headers["Wild-Tree"] ?? ""
+        self.parent = content.headers["Wild-Parent"]
+        self.message = content.body ?? ""
 
-        let lines = String(data: data, encoding: .utf8)?.split(separator: "\n") ?? []
-        for line in lines {
-            if line.hasPrefix("TREE ") {
-                tree = String(line.dropFirst("TREE ".count))
-            } else if line.hasPrefix("PARENT ") {
-                parent = String(line.dropFirst("PARENT ".count))
-            } else if line.hasPrefix("TIMESTAMP ") {
-                let str = String(line.dropFirst("TIMESTAMP ".count))
-                timestamp = .parseISO8601_UTC(str)
-            } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
-                continue
-            } else {
-                message.append(String(line))
-            }
-        }
-
-        self.tree = tree ?? ""
-        self.parent = parent
-        self.timestamp = timestamp ?? .now
-        self.message = message.joined(separator: "\n")
+        let date = content.headers["Date"] ?? ""
+        self.timestamp = Date.fromRFC1123(date) ?? .now
     }
 
     public func encode() throws -> Data {
-        var out: [String] = []
-        out.append("TREE \(tree)")
-        if let parent = parent {
-            out.append("PARENT \(parent)")
+        var content = """
+            Date: \(timestamp.toRFC1123)
+            Content-Type: text/x-wild-commit
+            Wild-Tree: \(tree)
+            
+            """
+        if let parent {
+            content += """
+            Wild-Parent: \(parent)
+            
+            """
         }
-        out.append("TIMESTAMP \(timestamp.toISO8601_UTC)")
-        out.append("")
-        out.append(message)
-        return out.joined(separator: "\n").data(using: .utf8)!
+        content += """
+            
+            \(message)
+            """
+        return content.data(using: .utf8)!
     }
 }
 

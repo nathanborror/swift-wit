@@ -12,8 +12,13 @@ let package = Package(
     products: [
         .library(name: "Wit", targets: ["Wit"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/nathanborror/swift-mime-generated", branch: "main"),
+    ],
     targets: [
-        .target(name: "Wit"),
+        .target(name: "Wit", dependencies: [
+            .product(name: "MIME", package: "swift-mime-generated"),
+        ]),
         .testTarget(name: "WitTests", dependencies: ["Wit"]),
     ]
 )

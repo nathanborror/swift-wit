@@ -1,4 +1,5 @@
 import Foundation
+import MIME
 
 public struct Tree: Sendable {
     public let entries: [Entry]
@@ -23,26 +24,25 @@ public struct Tree: Sendable {
     }
 
     public init(data: Data) throws {
-        let lines = String(data: data, encoding: .utf8)!
-            .split(separator: "\n")
-            .filter { !$0.isEmpty }
+        let content = try MIMEParser.parse(data)
+        let entries = content.headers.values(for: "Wild-Tree")
 
-        self.entries = lines.compactMap { line in
-            guard let colonIndex = line.firstIndex(of: ":") else { return nil }
-            let prefix = line[..<colonIndex].trimmingCharacters(in: .whitespaces)
-            let name = line[line.index(after: colonIndex)...].trimmingCharacters(in: .whitespaces)
-            let parts = prefix.split(separator: " ")
-            guard parts.count >= 3 else { return nil }
-            guard let mode = Entry.Mode(rawValue: String(parts[0])) else { return nil }
-            return .init(mode: mode, name: name, hash: String(parts[2]))
+        self.entries = entries.map {
+            let attrs = MIMEHeaderAttributes.parse($0)
+            let mode = Entry.Mode(rawValue: attrs["mode"] ?? "") ?? .normal
+            let name = attrs["name"] ?? ""
+            return .init(mode: mode, name: name, hash: attrs.value)
         }
     }
 
     public func encode() throws -> Data {
-        entries
-            .sorted { $0.name < $1.name }
-            .map { "\($0.mode.rawValue) \($0.mode == .directory ? "TREE" : "BLOB") \($0.hash) :\($0.name)" }
-            .joined(separator: "\n")
-            .data(using: .utf8)!
+        var contents = ["Content-Type: text/x-wild-tree"]
+        contents += entries.map {
+            "Wild-Tree: \($0.hash); name=\"\($0.name)\"; mode=\($0.mode.rawValue)"
+        }
+        guard let data = contents.joined(separator: "\n").data(using: .utf8) else {
+            throw Repo.Error.unknown("Failed to encode commit")
+        }
+        return data
     }
 }

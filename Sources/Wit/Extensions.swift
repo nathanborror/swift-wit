@@ -26,25 +26,23 @@ extension String {
 
 extension Date {
 
-    var toISO8601_UTC: String {
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.formatOptions = [
-            .withInternetDateTime,
-            .withFractionalSeconds
-        ]
+    public var toRFC1123: String {
+        let formatter = Date.RFC1123Formatter
         return formatter.string(from: self)
     }
 
-    static func parseISO8601_UTC(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.formatOptions = [
-            .withInternetDateTime,
-            .withFractionalSeconds
-        ]
+    public static func fromRFC1123(_ string: String) -> Date? {
+        let formatter = RFC1123Formatter
         return formatter.date(from: string)
     }
+
+    public static let RFC1123Formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: -8 * 3600)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return formatter
+    }()
 }
 
 extension Collection {

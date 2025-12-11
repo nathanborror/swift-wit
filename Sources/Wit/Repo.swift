@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import CryptoKit
+import MIME
 
 private let logger = Logger(subsystem: "Repo", category: "Wit")
 
@@ -20,6 +21,7 @@ public actor Repo {
         case missingRemote
         case missingPrivateKey
         case missingData
+        case unknown(String)
     }
 
     public enum Ref: Sendable {
@@ -124,14 +126,11 @@ public actor Repo {
         try await initialize()
 
         let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-        let remoteHeadData = try await remote.get(path: Self.defaultHeadPath)
-
-        // Copy remote HEAD
-        guard let remoteHead = String(data: remoteHeadData, encoding: .utf8) else {
+        guard let remoteHead = await readHEAD(remote: remote) else {
             print("Remote HEAD missing")
             return
         }
-        try await writeHEAD(remoteHead)
+        try await writeHEAD(hash: remoteHead, remote: local)
 
         // Copy necessary files
         for path in [
@@ -182,6 +181,13 @@ public actor Repo {
         try manager.mkdir(localURL/Self.defaultObjectsPath)
         try manager.mkdir(localURL/Self.defaultPath/"remotes"/"origin")
 
+        try await write("""
+            Date: \(Date.now.toRFC1123)
+            Content-Type: text/csv; charset=utf8; header=present; profile=wild-logs 
+            
+            
+            """, path: Self.defaultLogsPath)
+
         await postStatusNotification("Initialized repository")
     }
 
@@ -223,46 +229,12 @@ public actor Repo {
         return out
     }
 
-    /// List tracked and untracked files.
-    public func ls(_ ref: Ref = .head) async throws -> [File] {
-        let commitHash = try? await retrieveHash(ref: ref)
-
-        // Gather file references within the commit
-        let fileReferences: [String: File]
-        if let commitHash {
-            let commit = try await objects.retrieve(commit: commitHash)
-            let tree = try await objects.retrieve(tree: commit.tree)
-            fileReferences = try await objects.retrieveFileReferencesRecursive(tree)
-        } else {
-            fileReferences = [:]
-        }
-
-        // Gather file references within the working directory
-        let fileReferencesCurrent = try await retrieveCurrentFileReferences()
-
-        // Compare commit references with current files and find additions and modifications
-        var out: [File] = []
-        for (path, file) in fileReferencesCurrent {
-            if let previousRef = fileReferences[path] {
-                if previousRef.hash != file.hash {
-                    out.append(file.apply(state: .modified, previousHash: previousRef.hash))
-                } else {
-                    out.append(file.apply(previousHash: previousRef.hash))
-                }
-            } else {
-                out.append(file.apply(state: .added, previousHash: nil))
-            }
-        }
-
-        return out
-    }
-
     /// Show commit logs.
     public func logs() async throws -> [Log] {
-        guard let contents = await retrieveCommitLogFile() else {
-            return []
-        }
-        return contents.split(separator: "\n").map(String.init).map { LogDecoder().decode($0) }
+        guard let data = try? await read(Self.defaultLogsPath) else { return [] }
+        let message = try MIMEParser.parse(data)
+        guard let lines = message.body else { return [] }
+        return lines.split(separator: "\n").map(String.init).map { LogDecoder().decode($0) }
     }
 
     // MARK: Grow and tweak common history
@@ -270,7 +242,7 @@ public actor Repo {
     /// Record changes to the repository.
     @discardableResult
     public func commit(_ message: String) async throws -> String {
-        let head = await readHEAD()
+        let head = await readHEAD(remote: local)
         var files = try await status()
 
         // Store blobs, generate hashes and update the file references before building new tree structure
@@ -303,7 +275,7 @@ public actor Repo {
         let commitHash = try await objects.store(commit: commit, privateKey: privateKey)
 
         // Update HEAD, log commit
-        try await writeHEAD(commitHash)
+        try await writeHEAD(hash: commitHash, remote: local)
         try await log(commit: commit, hash: commitHash)
 
         await postStatusNotification("Committed '\(message)'")
@@ -315,7 +287,7 @@ public actor Repo {
     public func rebase(_ remote: Remote) async throws -> String {
         try await fetch(remote)
 
-        let head = await readHEAD()
+        let head = await readHEAD(remote: local)
         let remoteHeadData = try await read("\(Self.defaultPath)/remotes/origin/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
 
@@ -401,7 +373,7 @@ public actor Repo {
         guard let finalHead = rebasedCommits.last else {
             throw Error.missingHEAD
         }
-        try await writeHEAD(finalHead)
+        try await writeHEAD(hash: finalHead, remote: local)
 
         // Checkout and update final HEAD
         try await checkout(finalHead, remote: remote)
@@ -412,7 +384,7 @@ public actor Repo {
     /// Checkouts a commit by changing the HEAD to the given commit and rebuilding the working directory.
     public func checkout(_ commitHash: String, remote: Remote) async throws {
         try await updateWorkingDirectory(to: commitHash, remote: remote)
-        try await writeHEAD(commitHash)
+        try await writeHEAD(hash: commitHash, remote: local)
         await postStatusNotification("Checked out commit (\(commitHash.prefix(7)))")
     }
 
@@ -420,7 +392,7 @@ public actor Repo {
 
     /// Update remote along with associated objects.
     public func push(_ remote: Remote) async throws {
-        guard let head = await readHEAD() else {
+        guard let head = await readHEAD(remote: local) else {
             await postStatusNotification("Nothing to push — missing local HEAD")
             return
         }
@@ -429,8 +401,7 @@ public actor Repo {
         // storage and determine what needs to be pushed.
 
         let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-        let remoteHeadData = try? await remote.get(path: Self.defaultHeadPath)
-        let remoteHead = String(data: remoteHeadData ?? Data(), encoding: .utf8) ?? ""
+        let remoteHead = await readHEAD(remote: remote) ?? ""
 
         let remoteReachable = (!remoteHead.isEmpty) ? try await remoteObjects.retrieveCommitKeys(remoteHead) : []
         let localReachable = try await objects.retrieveCommitKeys(head)
@@ -485,12 +456,11 @@ public actor Repo {
         }
 
         // Download remote head
-        let remoteHeadData = try await remote.get(path: Self.defaultHeadPath)
-        let remoteHead = String(data: remoteHeadData, encoding: .utf8) ?? ""
-        try await write(remoteHeadData, path: "\(Self.defaultPath)/remotes/origin/HEAD")
+        let remoteHead = await readHEAD(remote: remote) ?? ""
+        try await write(remoteHead, path: "\(Self.defaultPath)/remotes/origin/HEAD")
 
         // Local head
-        let head = await readHEAD()
+        let head = await readHEAD(remote: local)
 
         // Compare heads
         guard !remoteHead.isEmpty, head != remoteHead else { return }
@@ -515,18 +485,31 @@ public actor Repo {
 
     // MARK: HEAD
 
-    public func readHEAD() async -> String? {
-        guard let data = try? await read(Self.defaultHeadPath) else {
+    public func readHEAD(remote: Remote) async -> String? {
+        guard let data = try? await remote.get(path: Self.defaultHeadPath) else {
             return nil
         }
-        if let hash = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
-            return hash.isEmpty ? nil : hash
+        guard let message = try? MIMEParser.parse(data) else {
+            return nil
         }
-        return nil
+        guard let hash = message.body?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return nil
+        }
+        return hash.isEmpty ? nil : hash
     }
 
-    private func writeHEAD(_ hash: String) async throws {
-        try await write(hash.trimmingCharacters(in: .whitespacesAndNewlines), path: Self.defaultHeadPath)
+    private func writeHEAD(hash: String, remote: Remote) async throws {
+        try await remote.put(
+            path: Self.defaultHeadPath,
+            data: """
+                Date: \(Date.now.toRFC1123)
+                Content-Type: text/x-wild-hash; kind=commit 
+                
+                \(hash.trimmingCharacters(in: .whitespacesAndNewlines))
+                """.data(using: .utf8),
+            directoryHint: .notDirectory,
+            privateKey: privateKey
+        )
     }
 }
 
@@ -537,20 +520,13 @@ extension Repo {
     func retrieveHash(ref: Ref) async throws -> String {
         switch ref {
         case .head:
-            guard let hash = await readHEAD() else {
+            guard let hash = await readHEAD(remote: local) else {
                 throw Error.missingHash
             }
             return hash
         case .commit(let hash):
             return hash
         }
-    }
-
-    func retrieveCommitLogFile() async -> String? {
-        guard let data = try? await read(Self.defaultLogsPath) else {
-            return nil
-        }
-        return String(data: data, encoding: .utf8)
     }
 
     func retrieveIgnores() async -> [String]? {
