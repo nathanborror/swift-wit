@@ -49,39 +49,16 @@ struct LogEncoder {
 
 struct LogDecoder {
 
-    func decode(_ line: String) -> Log {
-        return .init(parts: [], message: nil)
-
-//        let kind: Log.Kind
-//        let parts: [String]
-//        let timestamp: Date
-//        let message: String?
-//
-//        if let range = line.range(of: " :") {
-//            let metaSlice = line[..<range.lowerBound]
-//            let messageSlice = line[range.upperBound...]
-//            parts = metaSlice.split(separator: " ").map(String.init)
-//            message = messageSlice.trimmingCharacters(in: .whitespacesAndNewlines)
-//        } else {
-//            parts = line.split(separator: " ").map(String.init)
-//            message = nil
-//        }
-//        if parts.count >= 2 {
-//            timestamp = .parseISO8601_UTC(parts[0]) ?? .now
-//            kind = .init(rawValue: parts[1]) ?? .unknown
-//            return .init(
-//                timestamp: timestamp,
-//                kind: kind,
-//                parts: Array(parts.dropFirst(2)),
-//                message: message
-//            )
-//        } else {
-//            return .init(
-//                timestamp: .now,
-//                kind: .unknown,
-//                parts: parts,
-//                message: message
-//            )
-//        }
+    func decode(_ lines: String) -> [Log] {
+        let rows = CSVDecoder().decode(lines)
+        return rows.compactMap { row in
+            guard row.count >= 5 else { return nil }
+            return Log(
+                timestamp: Date.fromRFC1123(row[0]) ?? .now,
+                kind: .init(rawValue: row[1]) ?? .unknown,
+                parts: [row[2], row[3]],
+                message: row[4]
+            )
+        }
     }
 }

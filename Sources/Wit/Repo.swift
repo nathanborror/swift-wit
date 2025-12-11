@@ -185,7 +185,6 @@ public actor Repo {
             Date: \(Date.now.toRFC1123)
             Content-Type: text/csv; charset=utf8; header=present; profile=wild-logs 
             
-            
             """, path: Self.defaultLogsPath)
 
         await postStatusNotification("Initialized repository")
@@ -234,7 +233,7 @@ public actor Repo {
         guard let data = try? await read(Self.defaultLogsPath) else { return [] }
         let message = try MIMEParser.parse(data)
         guard let lines = message.body else { return [] }
-        return lines.split(separator: "\n").map(String.init).map { LogDecoder().decode($0) }
+        return LogDecoder().decode(lines)
     }
 
     // MARK: Grow and tweak common history
