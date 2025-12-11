@@ -24,7 +24,7 @@ public struct Tree: Sendable {
     }
 
     public init(data: Data) throws {
-        let content = try MIMEParser.parse(data)
+        let content = try MIMEDecoder().decode(data)
         let entries = content.headers.values(for: "Wild-Tree")
 
         self.entries = entries.map {

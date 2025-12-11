@@ -15,7 +15,7 @@ public struct Commit: Sendable {
     }
 
     public init(data: Data) throws {
-        let content = try MIMEParser.parse(data)
+        let content = try MIMEDecoder().decode(data)
         
         self.tree = content.headers["Wild-Tree"] ?? ""
         self.parent = content.headers["Wild-Parent"]

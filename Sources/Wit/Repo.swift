@@ -231,7 +231,7 @@ public actor Repo {
     /// Show commit logs.
     public func logs() async throws -> [Log] {
         guard let data = try? await read(Self.defaultLogsPath) else { return [] }
-        let message = try MIMEParser.parse(data)
+        let message = try MIMEDecoder().decode(data)
         guard let lines = message.body else { return [] }
         return LogDecoder().decode(lines)
     }
@@ -488,7 +488,7 @@ public actor Repo {
         guard let data = try? await remote.get(path: Self.defaultHeadPath) else {
             return nil
         }
-        guard let message = try? MIMEParser.parse(data) else {
+        guard let message = try? MIMEDecoder().decode(data) else {
             return nil
         }
         guard let hash = message.body?.trimmingCharacters(in: .whitespacesAndNewlines) else {
