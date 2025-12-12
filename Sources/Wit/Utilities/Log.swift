@@ -1,22 +1,18 @@
 import Foundation
+import TabularData
 
 public struct Log: Identifiable, Sendable {
     public let timestamp: Date
-    public let kind: Kind
-    public let parts: [String]
+    public let hash: String
+    public let parent: String?
     public let message: String?
 
     public var id: String { timestamp.toRFC1123 }
 
-    public enum Kind: String, Sendable {
-        case commit = "COMMIT"
-        case unknown = ""
-    }
-
-    public init(timestamp: Date = .now, kind: Kind = .unknown, parts: [String], message: String?) {
+    public init(timestamp: Date = .now, hash: String, parent: String?, message: String?) {
         self.timestamp = timestamp
-        self.kind = kind
-        self.parts = parts
+        self.hash = hash
+        self.parent = parent
         self.message = message
     }
 }
@@ -24,40 +20,31 @@ public struct Log: Identifiable, Sendable {
 struct LogEncoder {
 
     func encode(commit: Commit, hash: String) -> String {
-        let parts = [
-            commit.timestamp.toRFC1123,
-            "COMMIT",
-            hash,
-            commit.parent ?? "",
-            "\"\(commit.message)\""
-        ]
-        return parts.joined(separator: ",")
+        "\(commit.timestamp.timeIntervalSince1970),\(hash),\(commit.parent ?? ""),\"\(commit.message)\""
     }
 
     func encode(log: Log) -> String {
-        var parts = [
-            log.timestamp.toRFC1123,
-            log.kind.rawValue,
-        ]
-        parts += log.parts
+        var out = "\(log.timestamp.timeIntervalSince1970),\(log.hash),\(log.parent ?? ""),"
         if let message = log.message {
-            parts.append(message)
+            out += "\"\(message)\""
         }
-        return parts.joined(separator: ",")
+        return out
     }
 }
 
 struct LogDecoder {
 
-    func decode(_ lines: String) -> [Log] {
-        let rows = CSVDecoder().decode(lines)
-        return rows.compactMap { row in
-            guard row.count >= 5 else { return nil }
+    func decode(_ csv: String) throws -> [Log] {
+        let options = CSVReadingOptions(hasHeaderRow: true, delimiter: ",")
+        let frame = try DataFrame(csvData: csv.data(using: .utf8)!, options: options)
+
+        return frame.rows.compactMap { row in
+            let timestamp = row["timestamp"] as? Double ?? 0
             return Log(
-                timestamp: Date.fromRFC1123(row[0]) ?? .now,
-                kind: .init(rawValue: row[1]) ?? .unknown,
-                parts: [row[2], row[3]],
-                message: row[4]
+                timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp)),
+                hash: row["hash"] as! String,
+                parent: row["parent"] as? String,
+                message: row["message"] as? String
             )
         }
     }

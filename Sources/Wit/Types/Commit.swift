@@ -1,5 +1,6 @@
 import Foundation
 import MIME
+import TabularData
 
 public struct Commit: Sendable {
     public let tree: String
@@ -17,30 +18,27 @@ public struct Commit: Sendable {
     public init(data: Data) throws {
         let content = try MIMEDecoder().decode(data)
         
-        self.tree = content.headers["Wild-Tree"] ?? ""
-        self.parent = content.headers["Wild-Parent"]
-        self.message = content.body ?? ""
-
         let date = content.headers["Date"] ?? ""
         self.timestamp = Date.fromRFC1123(date) ?? .now
+
+        let options = CSVReadingOptions(hasHeaderRow: true, delimiter: ",")
+        let frame = try DataFrame(csvData: content.body!.data(using: .utf8)!, options: options)
+
+        guard let row = frame.rows.first else {
+            throw Repo.Error.unknown("malformed commit CSV")
+        }
+        self.tree = row["tree"]! as? String ?? ""
+        self.parent = row["parent"] as? String
+        self.message = row["message"]! as? String ?? ""
     }
 
     public func encode() throws -> Data {
-        var content = """
+        let content = """
             Date: \(timestamp.toRFC1123)
-            Content-Type: text/x-wild-commit
-            Wild-Tree: \(tree)
+            Content-Type: text/csv; charset=utf8; header=present; profile=commit
             
-            """
-        if let parent {
-            content += """
-            Wild-Parent: \(parent)
-            
-            """
-        }
-        content += """
-            
-            \(message)
+            tree,parent,message
+            \(tree),\(parent ?? ""),\"\(message)\"
             """
         return content.data(using: .utf8)!
     }

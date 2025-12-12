@@ -183,7 +183,9 @@ public actor Repo {
 
         try await write("""
             Date: \(Date.now.toRFC1123)
-            Content-Type: text/csv; charset=utf8; header=present; profile=wild-logs 
+            Content-Type: text/csv; charset=utf8; header=present; profile=logs 
+            
+            timestamp,hash,parent,message
             
             """, path: Self.defaultLogsPath)
 
@@ -232,8 +234,8 @@ public actor Repo {
     public func logs() async throws -> [Log] {
         guard let data = try? await read(Self.defaultLogsPath) else { return [] }
         let message = try MIMEDecoder().decode(data)
-        guard let lines = message.body else { return [] }
-        return LogDecoder().decode(lines)
+        guard let body = message.body else { return [] }
+        return try LogDecoder().decode(body)
     }
 
     // MARK: Grow and tweak common history
@@ -502,7 +504,7 @@ public actor Repo {
             path: Self.defaultHeadPath,
             data: """
                 Date: \(Date.now.toRFC1123)
-                Content-Type: text/x-wild-hash; kind=commit 
+                Content-Type: text/plain 
                 
                 \(hash.trimmingCharacters(in: .whitespacesAndNewlines))
                 """.data(using: .utf8),

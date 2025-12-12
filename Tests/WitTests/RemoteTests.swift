@@ -3,7 +3,7 @@ import CryptoKit
 import Testing
 @testable import Wit
 
-let isServerRunning = true
+let isServerRunning = false
 
 @Suite("Remote Tests", .enabled(if: isServerRunning))
 final class RemoteTests {
@@ -29,9 +29,12 @@ final class RemoteTests {
 
         let config = """
             Date: \(Date.now.toRFC1123)
-            Content-Type: multipart/x-wild-config; boundary="config"
-            Wild-Identifier: \(identity)
-            Wild-Public-Key: \(privateKey.publicKey.rawRepresentation.base64EncodedString())
+            Content-Type: text/ini
+            Wild-Identifier: \(identity) 
+            Wild-Public-Key = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
+            
+            identifier = \(identity)
+            publicKey = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
             """
         try await clientA.write(config, path: Repo.defaultConfigPath)
 
