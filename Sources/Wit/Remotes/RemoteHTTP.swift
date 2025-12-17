@@ -113,7 +113,7 @@ public actor RemoteHTTP: Remote {
         logger.warning("RemoteHTTP.move not implemented")
     }
 
-    public func list(path: String, ignores: [String]) async throws -> [String: URL] {
+    public func list(path: String) async throws -> [String: URL] {
         print("RemoteHTTP.list not implemented")
         return [:]
     }

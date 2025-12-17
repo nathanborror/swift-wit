@@ -13,27 +13,27 @@ final class RepoTests {
         defer { RemoveDirectory(pathA) }
         defer { RemoveDirectory(pathB) }
 
-        // RepoA first two commits
+        // Make two commits within Repo-A
         try await repoA.initialize()
-        let repoA_Commit1_Hash = try await CommitFile(repoA, path: "Documents/foo.txt")
-        let repoA_Commit2_Hash = try await CommitFile(repoA, path: "Documents/bar.txt")
+        let repoA_Commit1_Hash = try await CommitFile(repoA, path: "foo.txt")
+        let repoA_Commit2_Hash = try await CommitFile(repoA, path: "bar.txt")
         #expect(repoA_Commit1_Hash != repoA_Commit2_Hash)
 
-        // RepoB clone
+        // Clone Repo-A into Repo-B
         try await repoB.clone(repoA.local)
         let repoB_HEAD = await repoB.readHEAD(remote: repoB.local)!
         let repoB_HEAD_Commit = try await repoB.objects.retrieve(commit: repoB_HEAD)
         let repoB_HEAD_Commit_Tree = try await repoB.objects.retrieve(tree: repoB_HEAD_Commit.tree)
         #expect(repoB_HEAD == repoA_Commit2_Hash)
-        #expect(repoB_HEAD_Commit_Tree.entries.count == 1)
+        #expect(repoB_HEAD_Commit_Tree.entries.count == 2)
 
-        // RepoB commit
+        // Commit a new file into Repo-B
         let repoB_Commit3_Hash = try await CommitFile(repoB, path: "baz.txt")
         let repoB_Commit3 = try await repoB.objects.retrieve(commit: repoB_Commit3_Hash)
         let repoB_Commit3_Tree = try await repoB.objects.retrieve(tree: repoB_Commit3.tree)
-        #expect(repoB_Commit3_Tree.entries.count == 2)
+        #expect(repoB_Commit3_Tree.entries.count == 3)
 
-        // RepoB push to RepoA
+        // Push Repo-B to Repo-A
         try await repoB.push(repoA.local)
         #expect(await repoA.readHEAD(remote: repoA.local) == repoB_Commit3_Hash)
     }
@@ -46,21 +46,21 @@ final class RepoTests {
         defer { RemoveDirectory(pathA) }
         defer { RemoveDirectory(pathB) }
 
-        // RepoA → Commit 1
+        // Commit one file to Repo-A (commit 1)
         try await repoA.initialize()
         let repoA_commit1_hash = try await CommitFile(repoA, path: "foo.txt")
 
-        // RepoB clone RepoA
+        // Clone Repo-A into Repo-B
         try await repoB.clone(repoA.local)
         #expect(await repoB.readHEAD(remote: repoB.local) == repoA_commit1_hash)
 
-        // RepoA → Commit 2
+        // Commit a new file to Repo-A (commit 2)
         let repoA_commit2_hash = try await CommitFile(repoA, path: "bar.txt")
         let repoA_commit2_commit = try await repoA.objects.retrieve(commit: repoA_commit2_hash)
         let repoA_commit2_tree = try await repoA.objects.retrieve(tree: repoA_commit2_commit.tree)
         #expect(repoA_commit2_tree.entries.count == 2)
 
-        // RepoB → Commit 3
+        // Commit a new file to Repo-B (commit 3)
         let repoB_commit3_hash = try await CommitFile(repoB, path: "baz.txt")
         let repoB_commit3_commit = try await repoB.objects.retrieve(commit: repoB_commit3_hash)
         let repoB_commit3_tree = try await repoB.objects.retrieve(tree: repoB_commit3_commit.tree)
@@ -69,7 +69,7 @@ final class RepoTests {
         let repoB_logs1 = try await repoB.logs()
         #expect(repoB_logs1.count == 2)
 
-        // RepoB Rebase
+        // Rebase Repo-B
         let repoB_HEAD = try await repoB.rebase(repoA.local)
         let repoB_HEAD_commit = try await repoB.objects.retrieve(commit: repoB_HEAD)
         let repoB_HEAD_tree = try await repoB.objects.retrieve(tree: repoB_HEAD_commit.tree)
@@ -93,6 +93,7 @@ final class RepoTests {
         try await repo.initialize()
         try await repo.write("This is some foo", path: "Documents/foo.txt")
         try await repo.write("This is some bar", path: "Documents/bar.txt")
+        try await repo.write("", path: ".DS_Store") // Should be ignored
 
         let commit1_Hash = try await repo.commit("Initial commit")
         let commit1_Status = try await repo.status(.commit(commit1_Hash))
@@ -120,7 +121,9 @@ final class RepoTests {
         defer { RemoveDirectory(path) }
 
         try await repo.initialize()
-        let commit1_Hash = try await CommitFile(repo, path: "Documents/foo.txt", message: "Initial commit")
+        try await repo.write("", path: ".DS_Store") // Should be ignored
+        try await repo.write("", path: "Documents/foo.txt") // Should be ignored
+        let commit1_Hash = try await repo.commit("Initial commit")
         #expect(commit1_Hash.isEmpty == false)
         #expect(try await repo.objects.exists(key: .init(hash: commit1_Hash, kind: .commit)) == true)
 

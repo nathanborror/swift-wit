@@ -12,7 +12,6 @@ public actor Repo {
     public static let defaultObjectsPath = "\(defaultPath)/objects"
     public static let defaultHeadPath = "\(defaultPath)/HEAD"
     public static let defaultLogsPath = "\(defaultPath)/logs"
-    public static let defaultIgnorePath = ".ignore"
 
     public enum Error: Swift.Error {
         case missingHEAD
@@ -33,8 +32,9 @@ public actor Repo {
     let local: any Remote
     let objects: Objects
     let privateKey: Remote.PrivateKey?
+    let ignores: [String]
 
-    public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil) {
+    public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil, ignores: [String] = [".DS_Store"]) {
         self.localURL = URL.documentsDirectory.appending(path: path)
         self.privateKey = privateKey
         self.local = RemoteDisk(baseURL: localURL)
@@ -42,6 +42,7 @@ public actor Repo {
             remote: local,
             objectsPath: objectsPath ?? Self.defaultObjectsPath
         )
+        self.ignores = ["^.wild"] + ignores // Always ignore `.wild`
     }
 
     // MARK: Convenience
@@ -137,7 +138,6 @@ public actor Repo {
             Self.defaultConfigPath,
             Self.defaultSecretsPath,
             Self.defaultLogsPath,
-            Self.defaultIgnorePath,
         ] {
             if let data = try? await remote.get(path: path) {
                 try await write(data, path: path)
@@ -530,20 +530,14 @@ extension Repo {
         }
     }
 
-    func retrieveIgnores() async -> [String]? {
-        guard let data = try? await read(Self.defaultIgnorePath) else {
-            return nil
-        }
-        let ignores = String(data: data, encoding: .utf8)
-        return ignores?.split(separator: "\n").map(String.init)
-    }
-
-    /// Returns a dictionary of file references for files in the working directory keyed with their path, ignoring any ignored files.
+    /// Returns a dictionary of file references for files in the working directory keyed with their path.
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
-        let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
-        let files = try await local.list(path: path, ignores: ignores)
+        let files = try await local.list(path: path)
         var out: [String: File] = [:]
         for (relativePath, url) in files {
+            if shouldIgnore(path: relativePath) {
+                continue
+            }
             if let hash = try? await objects.hash(for: url) {
                 out[relativePath] = .init(path: relativePath, hash: hash, mode: .normal)
             }
@@ -639,9 +633,6 @@ extension Repo {
             return await objects.computeHash(data)
         }
 
-        // Files to ignore
-        let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
-
         var entries: [Tree.Entry] = []
         let directoryURL = directory.isEmpty ? localURL : (localURL/directory)
         let contents = try FileManager.default.contentsOfDirectory(
@@ -649,23 +640,16 @@ extension Repo {
             includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey],
         )
 
-        let shouldIgnore: (String, [String]) -> Bool = { path, ignores in
-            for ignore in ignores {
-                if path.hasPrefix(ignore) {
-                    return true
-                }
-            }
-            return false
-        }
-
         for item in contents {
             let filename = item.lastPathComponent
             let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             let isRegularFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
             let isSymbolicLink = (try? item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
-            let relativePath = directory.isEmpty ? filename : "\(directory)/\(filename)"
+            let relativePath: FilePath = directory.isEmpty ? filename : "\(directory)/\(filename)"
 
-            guard !shouldIgnore(relativePath, ignores) else { continue }
+            guard !shouldIgnore(path: relativePath) else {
+                continue
+            }
 
             if isDirectory {
                 // Recursively build or reuse subtree
@@ -739,6 +723,16 @@ extension Repo {
 }
 
 extension Repo {
+
+    private func shouldIgnore(path: FilePath) -> Bool {
+        for ignore in ignores {
+            let re = try! Regex(ignore)
+            if path.firstMatch(of: re) != nil {
+                return true
+            }
+        }
+        return false
+    }
 
     // TODO: Review generated code
     // Build a tree from a flat dictionary of file references
@@ -822,12 +816,13 @@ extension Repo {
     // TODO: Review generated code
     // Update working directory to match a specific commit
     private func updateWorkingDirectory(to commitHash: String, remote: Remote) async throws {
-        let ignores = await retrieveIgnores() ?? [".DS_Store", Self.defaultPath]
 
         // Clear current working directory (except .wild)
-        let contents = try FileManager.default.contentsOfDirectory(at: localURL, includingPropertiesForKeys: nil)
-        for item in contents where !ignores.contains(item.lastPathComponent) {
-            try FileManager.default.removeItem(at: item)
+        for item in try FileManager.default.contentsOfDirectory(at: localURL, includingPropertiesForKeys: nil) {
+            let relativePath = item.standardizedFileURL.path.replacingOccurrences(of: localURL.path + "/", with: "")
+            if relativePath != Self.defaultPath {
+                try FileManager.default.removeItem(at: item)
+            }
         }
 
         // Build new working directory

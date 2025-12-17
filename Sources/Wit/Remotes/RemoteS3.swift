@@ -127,7 +127,7 @@ public actor RemoteS3: Remote {
         logger.warning("RemoteS3.move not implemented")
     }
 
-    public func list(path: String, ignores: [String]) async throws -> [String: URL] {
+    public func list(path: String) async throws -> [String: URL] {
         logger.warning("RemoteS3.list not implemented")
         return [:]
     }
