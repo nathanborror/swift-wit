@@ -16,13 +16,16 @@ public struct Commit: Sendable {
     }
 
     public init(data: Data) throws {
-        let content = try MIMEDecoder().decode(data)
-        
-        let date = content.headers["Date"] ?? ""
+        let message = try MIMEDecoder().decode(data)
+        guard let part = message.parts.first else {
+            throw Repo.Error.unknown("missing commit part")
+        }
+
+        let date = part.headers["Date"] ?? ""
         self.timestamp = Date.fromRFC1123(date) ?? .now
 
         let options = CSVReadingOptions(hasHeaderRow: true, delimiter: ",")
-        let frame = try DataFrame(csvData: content.body!.data(using: .utf8)!, options: options)
+        let frame = try DataFrame(csvData: part.body.data(using: .utf8)!, options: options)
 
         guard let row = frame.rows.first else {
             throw Repo.Error.unknown("malformed commit CSV")

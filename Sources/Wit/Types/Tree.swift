@@ -25,10 +25,13 @@ public struct Tree: Sendable {
     }
 
     public init(data: Data) throws {
-        let content = try MIMEDecoder().decode(data)
+        let message = try MIMEDecoder().decode(data)
+        guard let part = message.parts.first else {
+            throw Repo.Error.unknown("missing tree part")
+        }
 
         let options = CSVReadingOptions(hasHeaderRow: true, delimiter: ",")
-        let frame = try DataFrame(csvData: content.body!.data(using: .utf8)!, options: options)
+        let frame = try DataFrame(csvData: part.body.data(using: .utf8)!, options: options)
 
         self.entries = frame.rows.map {
             let hash = $0["hash"] as? String ?? ""

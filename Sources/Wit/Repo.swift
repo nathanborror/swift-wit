@@ -234,8 +234,10 @@ public actor Repo {
     public func logs() async throws -> [Log] {
         guard let data = try? await read(Self.defaultLogsPath) else { return [] }
         let message = try MIMEDecoder().decode(data)
-        guard let body = message.body else { return [] }
-        return try LogDecoder().decode(body)
+        guard let part = message.parts.first else {
+            throw Error.unknown("missing log part")
+        }
+        return try LogDecoder().decode(part.body)
     }
 
     // MARK: Grow and tweak common history
@@ -493,9 +495,10 @@ public actor Repo {
         guard let message = try? MIMEDecoder().decode(data) else {
             return nil
         }
-        guard let hash = message.body?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+        guard let part = message.parts.first else {
             return nil
         }
+        let hash = part.body.trimmingCharacters(in: .whitespacesAndNewlines)
         return hash.isEmpty ? nil : hash
     }
 
