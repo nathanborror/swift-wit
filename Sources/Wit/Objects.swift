@@ -208,9 +208,7 @@ public actor Objects {
         return computeHash(data)
     }
 
-    // MARK: Private
-
-    func objectPath(_ key: Key) -> String {
+    public func objectPath(_ key: Key) -> String {
         let dir = String(key.hash.prefix(2))
         let file = String(key.hash.dropFirst(2))
 
@@ -228,6 +226,8 @@ public actor Objects {
 
         return "\(objectsPath)/\(kind)/\(dir)/\(file)"
     }
+
+    // MARK: Private
 
     func computeHash(_ data: Data) -> String {
         let hash = SHA256.hash(data: data)
