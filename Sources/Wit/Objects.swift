@@ -45,11 +45,11 @@ public actor Objects {
         return hash
     }
 
-    public func store(binary data: Data, privateKey: Remote.PrivateKey?) async throws -> String {
+    public func store(binary data: Data, ext: String, privateKey: Remote.PrivateKey?) async throws -> String {
         let hash = computeHash(data)
         let path = objectPath(.init(hash: hash, kind: .binary))
-        try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
-        return hash
+        try await remote.put(path: "\(path).\(ext)", data: data, directoryHint: .notDirectory, privateKey: privateKey)
+        return "\(hash).\(ext)"
     }
 
     // MARK: Deletion

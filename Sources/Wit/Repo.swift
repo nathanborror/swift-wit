@@ -20,6 +20,7 @@ public actor Repo {
         case missingRemote
         case missingPrivateKey
         case missingData
+        case missingExtension
         case unknown(String)
     }
 
@@ -83,12 +84,15 @@ public actor Repo {
         try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func writeBinary(_ data: Data, path: String, remote: Remote?) async throws {
+    public func writeBinary(_ data: Data, path: FilePath, remote: Remote?) async throws {
+        guard let ext = path.ext else {
+            throw Error.missingExtension
+        }
         if let remote {
             let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-            _ = try await remoteObjects.store(binary: data, privateKey: privateKey)
+            _ = try await remoteObjects.store(binary: data, ext: ext, privateKey: privateKey)
         }
-        let hash = try await objects.store(binary: data, privateKey: privateKey)
+        let hash = try await objects.store(binary: data, ext: ext, privateKey: privateKey)
         let aliasData = """
             Date: \(Date.now.toRFC1123)
             Content-Type: application/x-wild-alias
@@ -441,8 +445,9 @@ public actor Repo {
                 let blob = try await objects.retrieve(blob: key.hash)
                 let _ = try await remoteObjects.store(blob: blob, privateKey: privateKey)
             case .binary:
+                guard let ext = FilePath(key.hash).ext else { continue }
                 let binary = try await objects.retrieve(binary: key.hash)
-                let _ = try await remoteObjects.store(binary: binary, privateKey: privateKey)
+                let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
             }
         }
 
