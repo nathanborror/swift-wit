@@ -45,6 +45,13 @@ public actor Objects {
         return hash
     }
 
+    public func store(binary data: Data, privateKey: Remote.PrivateKey?) async throws -> String {
+        let hash = computeHash(data)
+        let path = objectPath(.init(hash: hash, kind: .binary))
+        try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
+        return hash
+    }
+
     // MARK: Deletion
 
     public func deletePermanently(hash: String, privateKey: Remote.PrivateKey?) async throws {
@@ -68,6 +75,11 @@ public actor Objects {
 
     public func retrieve(blob hash: String) async throws -> Data {
         let path = objectPath(.init(hash: hash, kind: .blob))
+        return try await remote.get(path: path)
+    }
+
+    public func retrieve(binary hash: String) async throws -> Data {
+        let path = objectPath(.init(hash: hash, kind: .binary))
         return try await remote.get(path: path)
     }
 
@@ -120,6 +132,7 @@ public actor Objects {
             case commit
             case tree
             case blob
+            case binary
         }
     }
 
@@ -153,7 +166,7 @@ public actor Objects {
                         }
                     }
                 }
-            case .blob:
+            case .blob, .binary:
                 continue
             }
         }
@@ -209,6 +222,8 @@ public actor Objects {
             kind = "trees"
         case .blob:
             kind = "blobs"
+        case .binary:
+            kind = "binaries"
         }
 
         return "\(objectsPath)/\(kind)/\(dir)/\(file)"

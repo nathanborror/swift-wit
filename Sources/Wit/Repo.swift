@@ -61,6 +61,10 @@ public actor Repo {
         try await retrieveBlob(hash, remote: remote)
     }
 
+    public func binary(hash: String, remote: Remote) async throws -> Data {
+        try await retrieveBinary(hash, remote: remote)
+    }
+
     // MARK: Working with files
 
     /// Reads data from the path in the working directory.
@@ -79,13 +83,19 @@ public actor Repo {
         try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    /// Writes data to object store directly rather than writes to the working directory.
-    public func writeToStore(_ data: Data, remote: Remote? = nil) async throws -> String {
+    public func writeBinary(_ data: Data, path: String, remote: Remote?) async throws {
         if let remote {
             let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-            _ = try await remoteObjects.store(blob: data, privateKey: privateKey)
+            _ = try await remoteObjects.store(binary: data, privateKey: privateKey)
         }
-        return try await objects.store(blob: data, privateKey: privateKey)
+        let hash = try await objects.store(binary: data, privateKey: privateKey)
+        let aliasData = """
+            Date: \(Date.now.toRFC1123)
+            Content-Type: text/x-wild-alias
+            Alias-Hash: \(hash)
+            
+            """.data(using: .utf8)!
+        try await local.put(path: "\(path).alias", data: aliasData, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     /// Deletes file from working directory.
@@ -93,11 +103,10 @@ public actor Repo {
         try await local.delete(path: path, privateKey: privateKey)
     }
 
-    /// Permanently deletes blob from local store and remote if given.
-    public func deleteFromStore(_ hash: String, remote: Remote? = nil) async throws {
+    public func deleteBinary(_ hash: String, remote: Remote?) async throws {
         if let remote {
             let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-            try await remoteObjects.deletePermanently(hash: hash, privateKey: privateKey)
+            _ = try await remoteObjects.deletePermanently(hash: hash, privateKey: privateKey)
         }
         try await objects.deletePermanently(hash: hash, privateKey: privateKey)
     }
@@ -426,6 +435,9 @@ public actor Repo {
             case .blob:
                 let blob = try await objects.retrieve(blob: key.hash)
                 let _ = try await remoteObjects.store(blob: blob, privateKey: privateKey)
+            case .binary:
+                let binary = try await objects.retrieve(binary: key.hash)
+                let _ = try await remoteObjects.store(binary: binary, privateKey: privateKey)
             }
         }
 
@@ -716,6 +728,18 @@ extension Repo {
         let key = Objects.Key(hash: hash, kind: .blob)
         if try await objects.exists(key: key) {
             return try await objects.retrieve(blob: hash)
+        } else {
+            let path = await objects.objectPath(key)
+            let data = try await remote.get(path: path)
+            try await write(data, path: path)
+            return data
+        }
+    }
+
+    func retrieveBinary(_ hash: String, remote: Remote) async throws -> Data {
+        let key = Objects.Key(hash: hash, kind: .binary)
+        if try await objects.exists(key: key) {
+            return try await objects.retrieve(binary: hash)
         } else {
             let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)

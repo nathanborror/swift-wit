@@ -36,7 +36,8 @@ Common directory structure is similar to Git. The objects folder is designed to 
         ├ objects/
           ├ commits/
           ├ trees/
-          └ objects/
+          ├ blobs/
+          └ binaries/
         └ remotes/
           └ origin/
             ├ HEAD

@@ -3,14 +3,14 @@ import Foundation
 extension FileManager {
 
     /// Creates a directory if it doesn't already exist.
-    func mkdir(_ url: URL) throws {
+    public func mkdir(_ url: URL) throws {
         guard !fileExists(atPath: url.path) else { return }
         let directoryURL = url.hasDirectoryPath ? url : url.deletingLastPathComponent()
         try createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
     /// Creates a file if it doesn't already exist, even if the given content is nil.
-    func touch(_ url: URL, contents: String? = nil) throws {
+    public func touch(_ url: URL, contents: String? = nil) throws {
         guard !fileExists(atPath: url.path) else { return }
         try mkdir(url)
         createFile(atPath: url.path, contents: contents?.data(using: .utf8))
@@ -19,8 +19,13 @@ extension FileManager {
 
 extension String {
 
-    func trimmingSlashes() -> String {
+    public func trimmingSlashes() -> String {
         trimmingCharacters(in: .init(charactersIn: "/"))
+    }
+
+    public func trimmingSuffix(_ suffix: String) -> String {
+        guard self.hasSuffix(suffix) else { return self }
+        return String(self.dropLast(suffix.count))
     }
 }
 
@@ -47,7 +52,7 @@ extension Date {
 
 extension Collection {
 
-    subscript(safe index: Index) -> Element? {
+    public subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
 }
