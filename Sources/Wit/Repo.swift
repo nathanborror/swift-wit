@@ -91,7 +91,7 @@ public actor Repo {
         let hash = try await objects.store(binary: data, privateKey: privateKey)
         let aliasData = """
             Date: \(Date.now.toRFC1123)
-            Content-Type: text/x-wild-alias
+            Content-Type: application/x-wild-alias
             Alias-Hash: \(hash)
             
             """.data(using: .utf8)!
