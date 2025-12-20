@@ -54,8 +54,8 @@ public actor Objects {
 
     // MARK: Deletion
 
-    public func deletePermanently(hash: String, privateKey: Remote.PrivateKey?) async throws {
-        let path = objectPath(.init(hash: hash, kind: .blob))
+    public func deleteBinary(hash: String, privateKey: Remote.PrivateKey?) async throws {
+        let path = objectPath(.init(hash: hash, kind: .binary))
         try await remote.delete(path: path, privateKey: privateKey)
     }
 

@@ -106,9 +106,9 @@ public actor Repo {
     public func deleteBinary(_ hash: String, remote: Remote?) async throws {
         if let remote {
             let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-            _ = try await remoteObjects.deletePermanently(hash: hash, privateKey: privateKey)
+            _ = try await remoteObjects.deleteBinary(hash: hash, privateKey: privateKey)
         }
-        try await objects.deletePermanently(hash: hash, privateKey: privateKey)
+        try await objects.deleteBinary(hash: hash, privateKey: privateKey)
     }
 
     public func move(_ path: String, to toPath: String) async throws {
