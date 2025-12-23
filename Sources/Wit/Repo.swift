@@ -669,7 +669,6 @@ extension Repo {
             let filename = item.lastPathComponent
             let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             let isRegularFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
-            let isSymbolicLink = (try? item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
             let relativePath: FilePath = directory.isEmpty ? filename : "\(directory)/\(filename)"
 
             guard !shouldIgnore(path: relativePath) else {
@@ -689,16 +688,6 @@ extension Repo {
                     name: filename,
                     hash: subTreeHash
                 ))
-            } else if isSymbolicLink {
-                if let file = files.first(where: { $0.path == relativePath }), let hash = file.hash {
-                    entries.append(.init(
-                        mode: .symbolicLink,
-                        name: filename,
-                        hash: hash
-                    ))
-                } else if let previousTree = previousTreeCache[directory], let previousEntry = previousTree.entries.first(where: { $0.name == filename }) {
-                    entries.append(previousEntry)
-                }
             } else if isRegularFile {
                 // Use new blob hash or get from previous tree
                 if let file = files.first(where: { $0.path == relativePath }), let hash = file.hash {
@@ -725,7 +714,7 @@ extension Repo {
             case .directory:
                 let path = path.isEmpty ? entry.name : "\(path)/\(entry.name)"
                 try await buildWorkingDirectoryRecursively(entry.hash, path: path, remote: remote)
-            case .normal, .executable, .symbolicLink:
+            case .normal:
                 let data = try await retrieveBlob(entry.hash, remote: remote)
                 let fileURL = localURL/path/entry.name
                 try FileManager.default.mkdir(fileURL)

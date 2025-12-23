@@ -97,7 +97,7 @@ public actor Objects {
                     files.merge(additional) { _, new in new }
                 }
 
-            case .executable, .normal, .symbolicLink:
+            case .normal:
                 if path.isEmpty {
                     files[entry.name] = .init(path: entry.name, hash: entry.hash, mode: .normal)
                 } else {
@@ -161,7 +161,7 @@ public actor Objects {
                         switch entry.mode {
                         case .directory:
                             stack.append(.init(hash: entry.hash, kind: .tree))
-                        case .executable, .normal, .symbolicLink:
+                        case .normal:
                             stack.append(.init(hash: entry.hash, kind: .blob))
                         }
                     }
