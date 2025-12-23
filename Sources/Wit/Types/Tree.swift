@@ -12,9 +12,9 @@ public struct Tree: Sendable {
 
         public var id: String { hash+name }
 
-        public enum Mode: Int, Codable, Sendable {
-            case normal = 100644
-            case directory = 0o40000
+        public enum Mode: String, Codable, Sendable {
+            case normal
+            case directory
         }
     }
 
@@ -34,8 +34,8 @@ public struct Tree: Sendable {
         self.entries = frame.rows.map {
             let hash = $0["hash"] as? String ?? ""
             let name = $0["name"] as? String ?? ""
-            let modeInt = $0["mode"] as? Int ?? 0
-            let mode = Entry.Mode(rawValue: modeInt) ?? .normal
+            let modeStr = $0["mode"] as? String ?? ""
+            let mode = Entry.Mode(rawValue: modeStr) ?? .normal
             return .init(mode: mode, name: name, hash: hash)
         }
     }
