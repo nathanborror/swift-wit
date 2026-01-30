@@ -11,7 +11,7 @@ public protocol Remote: Actor {
     func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws
     func delete(path: String, privateKey: PrivateKey?) async throws
     func move(path: String, to toPath: String) async throws
-    func list(path: String) async throws -> [String: URL]
+    func list(path: String) async throws -> [String]
 }
 
 public enum RemoteError: Swift.Error, CustomStringConvertible {

@@ -559,10 +559,11 @@ extension Repo {
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
         let files = try await local.list(path: path)
         var out: [String: File] = [:]
-        for (relativePath, url) in files {
+        for relativePath in files {
             if shouldIgnore(path: relativePath) {
                 continue
             }
+            let url = localURL.appending(path: relativePath)
             if let hash = try? await objects.hash(for: url) {
                 out[relativePath] = .init(path: relativePath, hash: hash, mode: .normal)
             }

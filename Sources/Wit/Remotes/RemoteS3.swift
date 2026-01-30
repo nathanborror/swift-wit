@@ -127,7 +127,7 @@ public actor RemoteS3: Remote {
         logger.warning("RemoteS3.move not implemented")
     }
 
-    public func list(path: String) async throws -> [String: URL] {
+    public func list(path: String) async throws -> [String] {
         let signature = AWSV4Signature(
             accessKey: accessKey,
             secretKey: secretKey,
@@ -162,17 +162,17 @@ public actor RemoteS3: Remote {
 
     // MARK: - Private
 
-    private func parseListResponse(data: Data, prefix: String) -> [String: URL] {
+    private func parseListResponse(data: Data, prefix: String) -> [String] {
         guard let xmlString = String(data: data, encoding: .utf8) else {
-            return [:]
+            return []
         }
 
-        var results: [String: URL] = [:]
+        var results: [String] = []
 
         // Parse <Key>...</Key> elements from the XML response
         let keyPattern = "<Key>([^<]+)</Key>"
         guard let regex = try? NSRegularExpression(pattern: keyPattern) else {
-            return [:]
+            return []
         }
 
         let range = NSRange(xmlString.startIndex..., in: xmlString)
@@ -196,9 +196,7 @@ public actor RemoteS3: Remote {
             guard !relativePath.isEmpty else {
                 continue
             }
-
-            let url = baseURL.appendingPathComponent(relativePath)
-            results[relativePath] = url
+            results.append(relativePath)
         }
         return results
     }

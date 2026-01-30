@@ -112,4 +112,14 @@ final class RemoteTests {
         let logs = try await clientB.logs()
         #expect(logs.count == 4)
     }
+
+    @Test("List")
+    func list() async throws {
+        try await clientA.write("This is some foo", path: "foo.txt")
+        try await clientA.commit("First commit")
+        try await clientA.push(remote)
+
+        let items = try await remote.list(path: "\(Repo.defaultPath)/objects")
+        #expect(items.count == 3)
+    }
 }

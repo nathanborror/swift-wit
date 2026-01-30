@@ -113,9 +113,28 @@ public actor RemoteHTTP: Remote {
         logger.warning("RemoteHTTP.move not implemented")
     }
 
-    public func list(path: String) async throws -> [String: URL] {
-        print("RemoteHTTP.list not implemented")
-        return [:]
+    public func list(path: String) async throws -> [String] {
+        var url = baseURL/path
+        if !path.hasSuffix("/") {
+            url = baseURL/"\(path)/"
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        let (body, resp) = try await session.data(for: request)
+        guard let httpResponse = resp as? HTTPURLResponse else {
+            throw RemoteError.badServerResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            let objects = try JSONSerialization.jsonObject(with: body) as! [[String: Any]]
+            return objects.map { $0["Key"] as! String }
+        default:
+            logger.error("GET Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8)!)")
+            throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))
+        }
     }
 
     // MARK: - Private
