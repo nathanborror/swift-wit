@@ -129,8 +129,8 @@ public actor RemoteHTTP: Remote {
 
         switch httpResponse.statusCode {
         case 200:
-            let objects = try JSONSerialization.jsonObject(with: body) as! [[String: Any]]
-            return objects.map { $0["Key"] as! String }
+            let content = String(data: body, encoding: .utf8) ?? ""
+            return content.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").map { String($0) }
         default:
             logger.error("GET Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8)!)")
             throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))
