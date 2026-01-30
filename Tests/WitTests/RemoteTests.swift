@@ -30,20 +30,23 @@ final class RemoteTests {
         let config = """
             Date: \(Date.now.toRFC1123)
             Content-Type: text/ini
-            Wild-Identifier: \(identity) 
-            Wild-Public-Key = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
             
             identifier = \(identity)
             publicKey = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
+            remote = origin
+            
+            [remote:origin]
+            host = "http://localhost:8080"
+            kind = local
             """
         try await clientA.write(config, path: Repo.defaultConfigPath)
 
-        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
+        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/files/\(identity)")!)
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
         let configData = try await clientA.read(Repo.defaultConfigPath)
-        try await registerRemote.put(path: "registration", data: configData, directoryHint: .notDirectory, privateKey: nil)
+        try await registerRemote.put(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
 
         self.clientB = Repo(path: clientB_workingPath, privateKey: privateKey)
         try await self.clientB.initialize()
@@ -56,7 +59,7 @@ final class RemoteTests {
         try? FileManager.default.removeItem(at: .documentsDirectory/clientB_workingPath)
         let privateKey = privateKey
         let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
-        Task { try await remote.delete(path: "registration", privateKey: privateKey) }
+        Task { try await remote.delete(path: "register", privateKey: privateKey) }
     }
 
     @Test("Push")
