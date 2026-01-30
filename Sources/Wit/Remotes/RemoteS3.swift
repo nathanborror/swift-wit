@@ -128,11 +128,80 @@ public actor RemoteS3: Remote {
     }
 
     public func list(path: String) async throws -> [String: URL] {
-        logger.warning("RemoteS3.list not implemented")
-        return [:]
+        let signature = AWSV4Signature(
+            accessKey: accessKey,
+            secretKey: secretKey,
+            regionName: region
+        )
+
+        // Build the prefix from the baseURL path and the provided path
+        let basePath = baseURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let fullPrefix = path.isEmpty ? basePath : "\(basePath)/\(path)"
+
+        var params = ["list-type": "2"]
+        if !fullPrefix.isEmpty {
+            params["prefix"] = fullPrefix
+        }
+
+        let request = try signature.sign(method: .get, bucket: bucket, params: params)
+
+        let (body, resp) = try await session.data(for: request)
+        guard let httpResponse = resp as? HTTPURLResponse else {
+            throw RemoteError.badServerResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            logger.info("LIST (\(path))")
+            return parseListResponse(data: body, prefix: fullPrefix)
+        default:
+            logger.error("LIST Error (\(path), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8) ?? "Unknown")")
+            throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))
+        }
     }
 
     // MARK: - Private
+
+    private func parseListResponse(data: Data, prefix: String) -> [String: URL] {
+        guard let xmlString = String(data: data, encoding: .utf8) else {
+            return [:]
+        }
+
+        var results: [String: URL] = [:]
+
+        // Parse <Key>...</Key> elements from the XML response
+        let keyPattern = "<Key>([^<]+)</Key>"
+        guard let regex = try? NSRegularExpression(pattern: keyPattern) else {
+            return [:]
+        }
+
+        let range = NSRange(xmlString.startIndex..., in: xmlString)
+        let matches = regex.matches(in: xmlString, range: range)
+
+        for match in matches {
+            guard let keyRange = Range(match.range(at: 1), in: xmlString) else {
+                continue
+            }
+            let fullKey = String(xmlString[keyRange])
+
+            // Remove the prefix to get the relative path
+            let relativePath: String
+            if !prefix.isEmpty && fullKey.hasPrefix(prefix) {
+                relativePath = String(fullKey.dropFirst(prefix.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            } else {
+                relativePath = fullKey
+            }
+
+            // Skip if it's the prefix directory itself
+            guard !relativePath.isEmpty else {
+                continue
+            }
+
+            let url = baseURL.appendingPathComponent(relativePath)
+            results[relativePath] = url
+        }
+        return results
+    }
 
     private func sign(request: URLRequest, data: Data, privateKey: PrivateKey) throws -> URLRequest {
         guard let url = request.url else {
