@@ -119,7 +119,12 @@ final class RemoteTests {
         try await clientA.commit("First commit")
         try await clientA.push(remote)
 
-        let items = try await remote.list(path: "\(Repo.defaultPath)/objects")
+        let parent = "\(Repo.defaultPath)/objects"
+        let items = try await remote.list(path: parent)
         #expect(items.count == 3)
+
+        for item in items {
+            #expect(item.hasPrefix(parent))
+        }
     }
 }
