@@ -11,20 +11,20 @@ final class RemoteTests {
     let identity: String
     let remote: Remote
 
-    let clientA_workingPath: String
+    let clientA_workingFolder: String
     let clientA: Repo
 
-    let clientB_workingPath: String
+    let clientB_workingFolder: String
     let clientB: Repo
 
     init() async throws {
         self.privateKey = Remote.PrivateKey()
         self.identity = UUID().uuidString
 
-        self.clientA_workingPath = "A-\(identity)"
-        self.clientB_workingPath = "B-\(identity)"
+        self.clientA_workingFolder = "A-\(identity)"
+        self.clientB_workingFolder = "B-\(identity)"
 
-        self.clientA = Repo(path: clientA_workingPath, privateKey: privateKey)
+        self.clientA = Repo(baseURL: .documentsDirectory, folder: clientA_workingFolder, privateKey: privateKey)
         try await clientA.initialize()
 
         let config = """
@@ -48,15 +48,15 @@ final class RemoteTests {
         let configData = try await clientA.read(Repo.defaultConfigPath)
         try await registerRemote.put(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
 
-        self.clientB = Repo(path: clientB_workingPath, privateKey: privateKey)
+        self.clientB = Repo(baseURL: .documentsDirectory, folder: clientB_workingFolder, privateKey: privateKey)
         try await self.clientB.initialize()
     }
 
     deinit { teardown() }
 
     func teardown() {
-        try? FileManager.default.removeItem(at: .documentsDirectory/clientA_workingPath)
-        try? FileManager.default.removeItem(at: .documentsDirectory/clientB_workingPath)
+        try? FileManager.default.removeItem(at: .documentsDirectory/clientA_workingFolder)
+        try? FileManager.default.removeItem(at: .documentsDirectory/clientB_workingFolder)
         let privateKey = privateKey
         let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
         Task { try await remote.delete(path: "register", privateKey: privateKey) }

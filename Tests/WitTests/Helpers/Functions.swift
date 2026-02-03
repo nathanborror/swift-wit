@@ -5,7 +5,7 @@ import CryptoKit
 func NewRepo() -> (String, Repo) {
     let workingPath = UUID().uuidString
     let privateKey = Curve25519.Signing.PrivateKey()
-    let repo = Repo(path: workingPath, privateKey: privateKey)
+    let repo = Repo(baseURL: .documentsDirectory, folder: workingPath, privateKey: privateKey)
     return (workingPath, repo)
 }
 

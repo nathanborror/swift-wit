@@ -35,8 +35,8 @@ public actor Repo {
     let privateKey: Remote.PrivateKey?
     let ignores: [String]
 
-    public init(path: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil, ignores: [String] = [".DS_Store"], baseURL: URL = .documentsDirectory) {
-        self.localURL = baseURL.appending(path: path)
+    public init(baseURL: URL, folder: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil, ignores: [String] = [".DS_Store"]) {
+        self.localURL = baseURL.appending(path: folder)
         self.privateKey = privateKey
         self.local = RemoteDisk(baseURL: localURL)
         self.objects = Objects(
