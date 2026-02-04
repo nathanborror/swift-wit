@@ -14,7 +14,7 @@ public actor RemoteHTTP: Remote {
 
         let configuration = URLSessionConfiguration.default
         configuration.httpMaximumConnectionsPerHost = maxConcurrentUploads
-        configuration.timeoutIntervalForRequest = 300 // 5 minutes
+        configuration.timeoutIntervalForRequest = 60 // 1 minute
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData // ensures manual ETag checking works
         self.session = URLSession(configuration: configuration)
     }
@@ -22,6 +22,7 @@ public actor RemoteHTTP: Remote {
     public func exists(path: String) async throws -> Bool {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "HEAD"
+        request.timeoutInterval = 15
 
         let (body, resp) = try await session.data(for: request)
         guard let httpResponse = resp as? HTTPURLResponse else {
@@ -44,6 +45,7 @@ public actor RemoteHTTP: Remote {
     public func get(path: String) async throws -> Data {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "GET"
+        request.timeoutInterval = 15
 
         let (body, resp) = try await session.data(for: request)
         guard let httpResponse = resp as? HTTPURLResponse else {
@@ -89,6 +91,7 @@ public actor RemoteHTTP: Remote {
     public func delete(path: String, privateKey: PrivateKey?) async throws {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "DELETE"
+        request.timeoutInterval = 15
         if let privateKey {
             request = try sign(request: request, privateKey: privateKey)
         }
@@ -121,6 +124,7 @@ public actor RemoteHTTP: Remote {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 15
 
         let (body, resp) = try await session.data(for: request)
         guard let httpResponse = resp as? HTTPURLResponse else {
@@ -135,6 +139,7 @@ public actor RemoteHTTP: Remote {
                 .split(separator: "\n")
                 .map { String($0.trimmingPrefix(baseURL.path())) }
                 .map { String($0.trimmingPrefix("/")) }
+                .filter { !$0.isEmpty }
         default:
             logger.error("GET Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8)!)")
             throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))

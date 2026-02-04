@@ -24,7 +24,7 @@ public actor RemoteS3: Remote {
 
         let configuration = URLSessionConfiguration.default
         configuration.httpMaximumConnectionsPerHost = maxConcurrentUploads
-        configuration.timeoutIntervalForRequest = 300 // 5 minutes
+        configuration.timeoutIntervalForRequest = 60 // 1 minute
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData // ensures manual ETag checking works
         self.session = URLSession(configuration: configuration)
     }
@@ -32,6 +32,7 @@ public actor RemoteS3: Remote {
     public func exists(path: String) async throws -> Bool {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "HEAD"
+        request.timeoutInterval = 15
 
         let (body, resp) = try await session.data(for: request)
         guard let httpResponse = resp as? HTTPURLResponse else {
@@ -54,6 +55,7 @@ public actor RemoteS3: Remote {
     public func get(path: String) async throws -> Data {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "GET"
+        request.timeoutInterval = 15
 
         let (body, resp) = try await session.data(for: request)
         guard let httpResponse = resp as? HTTPURLResponse else {
@@ -103,6 +105,7 @@ public actor RemoteS3: Remote {
     public func delete(path: String, privateKey: PrivateKey?) async throws {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "DELETE"
+        request.timeoutInterval = 15
         if let privateKey {
             request = try sign(request: request, data: Data(), privateKey: privateKey)
         }
@@ -143,7 +146,8 @@ public actor RemoteS3: Remote {
             params["prefix"] = fullPrefix
         }
 
-        let request = try signature.sign(method: .get, bucket: bucket, params: params)
+        var request = try signature.sign(method: .get, bucket: bucket, params: params)
+        request.timeoutInterval = 15
 
         let (body, resp) = try await session.data(for: request)
         guard let httpResponse = resp as? HTTPURLResponse else {
