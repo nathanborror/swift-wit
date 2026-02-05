@@ -3,7 +3,7 @@ import CryptoKit
 import Testing
 @testable import Wit
 
-let isServerRunning = false
+let isServerRunning = true
 
 @Suite("Remote Tests", .enabled(if: isServerRunning))
 final class RemoteTests {
@@ -111,6 +111,37 @@ final class RemoteTests {
         try await clientB.rebase(remote)
         let logs = try await clientB.logs()
         #expect(logs.count == 4)
+    }
+
+    @Test("Push binaries")
+    func pushBinaries() async throws {
+        let binaryData = Data("fake image data".utf8)
+        let filePath: FilePath = "photo.jpg"
+
+        // Write binary — should only store locally, not on remote
+        try await clientA.writeBinary(binaryData, path: filePath)
+
+        // Read the alias file to get the binary hash
+        let aliasData = try await clientA.read("\(filePath).alias")
+        let aliasContent = String(data: aliasData, encoding: .utf8)!
+        let range = aliasContent.range(of: "Alias-Hash: ")!
+        let binaryHash = String(aliasContent[range.upperBound...].prefix(while: { !$0.isWhitespace }))
+
+        // Verify the binary does NOT exist on the remote yet
+        let remoteObjects = Objects(remote: remote, objectsPath: Repo.defaultObjectsPath)
+        let existsBefore = try await remoteObjects.exists(key: .init(hash: binaryHash, kind: .binary))
+        #expect(existsBefore == false)
+
+        // Commit (this commits the alias file as a blob) and push
+        try await clientA.commit("Add binary")
+        try await clientA.push(remote)
+
+        // Verify the binary now exists on the remote with correct content
+        let existsAfter = try await remoteObjects.exists(key: .init(hash: binaryHash, kind: .binary))
+        #expect(existsAfter == true)
+
+        let remoteBinary = try await remoteObjects.retrieve(binary: binaryHash)
+        #expect(remoteBinary == binaryData)
     }
 
     @Test("List")

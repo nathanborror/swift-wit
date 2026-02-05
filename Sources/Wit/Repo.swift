@@ -84,13 +84,9 @@ public actor Repo {
         try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func writeBinary(_ data: Data, path: FilePath, remote: Remote?) async throws {
+    public func writeBinary(_ data: Data, path: FilePath) async throws {
         guard let ext = path.ext else {
             throw Error.missingExtension
-        }
-        if let remote {
-            let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-            _ = try await remoteObjects.store(binary: data, ext: ext, privateKey: privateKey)
         }
         let hash = try await objects.store(binary: data, ext: ext, privateKey: privateKey)
         let aliasData = """
@@ -107,11 +103,7 @@ public actor Repo {
         try await local.delete(path: path, privateKey: privateKey)
     }
 
-    public func deleteBinary(_ hash: String, remote: Remote?) async throws {
-        if let remote {
-            let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
-            _ = try await remoteObjects.deleteBinary(hash: hash, privateKey: privateKey)
-        }
+    public func deleteBinary(_ hash: String) async throws {
         try await objects.deleteBinary(hash: hash, privateKey: privateKey)
     }
 
@@ -445,10 +437,36 @@ public actor Repo {
                 let blob = try await objects.retrieve(blob: key.hash)
                 let _ = try await remoteObjects.store(blob: blob, privateKey: privateKey)
             case .binary:
-                guard let ext = FilePath(key.hash).ext else { continue }
-                let binary = try await objects.retrieve(binary: key.hash)
-                let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
+                continue
             }
+        }
+
+        // Find binary objects referenced by alias files and push them.
+        // Alias files are committed as regular blobs but contain an Alias-Hash
+        // header pointing to the actual binary in the content-addressable store.
+        let treeKeys = localReachable.filter { $0.kind == .tree }
+        var binaryHashesToPush = Set<String>()
+        for key in treeKeys {
+            let tree = try await objects.retrieve(tree: key.hash)
+            for entry in tree.entries where entry.mode == .normal && entry.name.hasSuffix(".alias") {
+                let blobData = try await objects.retrieve(blob: entry.hash)
+                if let content = String(data: blobData, encoding: .utf8),
+                   let range = content.range(of: "Alias-Hash: ") {
+                    let rest = content[range.upperBound...]
+                    let hash = rest.prefix(while: { !$0.isWhitespace })
+                    if !hash.isEmpty {
+                        binaryHashesToPush.insert(String(hash))
+                    }
+                }
+            }
+        }
+
+        for binaryHash in binaryHashesToPush {
+            let key = Objects.Key(hash: binaryHash, kind: .binary)
+            if try await remoteObjects.exists(key: key) { continue }
+            guard let ext = FilePath(binaryHash).ext else { continue }
+            let binary = try await objects.retrieve(binary: binaryHash)
+            let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
         }
 
         // Upload current HEAD, logs and config to remote
