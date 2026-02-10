@@ -15,6 +15,21 @@ public actor RemoteS3: Remote {
     let session: URLSession
     let maxConcurrentUploads = 5
 
+    public init(url: URL, accessKey: String, secretKey: String) throws {
+        guard let host = url.host() else {
+            throw RemoteError.badServerURL
+        }
+        let pathComponents = url.pathComponents.filter { $0 != "/" }
+
+        guard let region = host.split(separator: ".").dropFirst().first.map(String.init) else {
+            throw RemoteError.badServerURL
+        }
+        let bucket = pathComponents[0]
+        let path = pathComponents.dropFirst().joined(separator: "/")
+
+        self.init(bucket: bucket, path: path, region: region, accessKey: accessKey, secretKey: secretKey)
+    }
+
     public init(bucket: String, path: String, region: String, accessKey: String, secretKey: String) {
         self.bucket = bucket
         self.region = region
