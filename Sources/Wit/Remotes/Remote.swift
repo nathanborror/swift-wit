@@ -19,6 +19,7 @@ public enum RemoteError: Swift.Error, CustomStringConvertible {
     case missingURLMethod
     case missingURLPath
     case missingPrivateKey
+    case unauthorized
     case badServerResponse
     case badServerURL
     case requestFailed(Int, String?)
@@ -33,6 +34,8 @@ public enum RemoteError: Swift.Error, CustomStringConvertible {
             "Missing URL path"
         case .missingPrivateKey:
             "Missing private key"
+        case .unauthorized:
+            "The request was unauthorized."
         case .badServerResponse:
             "The server returned an invalid response."
         case .badServerURL:
