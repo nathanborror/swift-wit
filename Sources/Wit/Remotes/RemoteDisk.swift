@@ -40,6 +40,10 @@ public actor RemoteDisk: Remote {
         }
     }
 
+    public func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+        try await put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
+    }
+
     public func delete(path: String, privateKey: PrivateKey?) async throws {
         let url = baseURL/path
         try? FileManager.default.removeItem(at: url)

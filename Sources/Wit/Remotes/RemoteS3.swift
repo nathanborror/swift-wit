@@ -88,13 +88,21 @@ public actor RemoteS3: Remote {
     }
 
     public func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+        try await upload("PUT", path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
+    }
+
+    public func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+        try await upload("POST", path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
+    }
+
+    private func upload(_ method: String, path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
 
         // Amazon doesn't have a concept of directories (yet)
         guard directoryHint != .isDirectory else {
             return
         }
         var request = URLRequest(url: baseURL/path)
-        request.httpMethod = "PUT"
+        request.httpMethod = method
 
         let data = data ?? Data()
 
@@ -109,10 +117,10 @@ public actor RemoteS3: Remote {
 
         switch httpResponse.statusCode {
         case 200:
-            logger.info("PUT (\(request.url?.path ?? "."))")
+            logger.info("\(method) (\(request.url?.path ?? "."))")
             return
         default:
-            logger.error("PUT Error: (\(request.url?.path ?? "."), \(httpResponse.statusCode)) — \(request.url!.path) `\(String(data: body, encoding: .utf8) ?? "Unknown")`")
+            logger.error("\(method) Error: (\(request.url?.path ?? "."), \(httpResponse.statusCode)) — \(request.url!.path) `\(String(data: body, encoding: .utf8) ?? "Unknown")`")
             throw RemoteError.requestFailed(httpResponse.statusCode, request.url?.absoluteString)
         }
     }
