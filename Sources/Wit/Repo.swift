@@ -444,29 +444,33 @@ public actor Repo {
         // Find binary objects referenced by alias files and push them.
         // Alias files are committed as regular blobs but contain an Alias-Hash
         // header pointing to the actual binary in the content-addressable store.
-        let treeKeys = localReachable.filter { $0.kind == .tree }
-        var binaryHashesToPush = Set<String>()
-        for key in treeKeys {
-            let tree = try await objects.retrieve(tree: key.hash)
-            for entry in tree.entries where entry.mode == .normal && entry.name.hasSuffix(".alias") {
-                let blobData = try await objects.retrieve(blob: entry.hash)
-                if let content = String(data: blobData, encoding: .utf8),
-                   let range = content.range(of: "Alias-Hash: ") {
-                    let rest = content[range.upperBound...]
-                    let hash = rest.prefix(while: { !$0.isWhitespace })
-                    if !hash.isEmpty {
-                        binaryHashesToPush.insert(String(hash))
+        // Errors are logged but they don't halt the push process.
+        do {
+            let treeKeys = localReachable.filter { $0.kind == .tree }
+            var binaryHashesToPush = Set<String>()
+            for key in treeKeys {
+                let tree = try await objects.retrieve(tree: key.hash)
+                for entry in tree.entries where entry.mode == .normal && entry.name.hasSuffix(".alias") {
+                    let blobData = try await objects.retrieve(blob: entry.hash)
+                    if let content = String(data: blobData, encoding: .utf8),
+                       let range = content.range(of: "Alias-Hash: ") {
+                        let rest = content[range.upperBound...]
+                        let hash = rest.prefix(while: { !$0.isWhitespace })
+                        if !hash.isEmpty {
+                            binaryHashesToPush.insert(String(hash))
+                        }
                     }
                 }
             }
-        }
-
-        for binaryHash in binaryHashesToPush {
-            let key = Objects.Key(hash: binaryHash, kind: .binary)
-            if try await remoteObjects.exists(key: key) { continue }
-            guard let ext = FilePath(binaryHash).ext else { continue }
-            let binary = try await objects.retrieve(binary: binaryHash)
-            let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
+            for binaryHash in binaryHashesToPush {
+                let key = Objects.Key(hash: binaryHash, kind: .binary)
+                if try await remoteObjects.exists(key: key) { continue }
+                guard let ext = FilePath(binaryHash).ext else { continue }
+                let binary = try await objects.retrieve(binary: binaryHash)
+                let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
+            }
+        } catch {
+            print("Error pushing binary objects: \(error)")
         }
 
         // Upload current HEAD, logs and config to remote
