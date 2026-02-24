@@ -31,17 +31,12 @@ final class RemoteTests {
             Date: \(Date.now.toRFC1123)
             Content-Type: text/ini
             
-            identifier = \(identity)
+            address = \(identity)@wild.local
             publicKey = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
-            remote = origin
-            
-            [remote:origin]
-            host = "http://localhost:8080"
-            kind = local
             """
         try await clientA.write(config, path: Repo.defaultConfigPath)
 
-        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/files/\(identity)")!)
+        self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/home/\(identity)")!)
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
@@ -59,7 +54,7 @@ final class RemoteTests {
         try? FileManager.default.removeItem(at: .documentsDirectory/clientB_workingFolder)
         let privateKey = privateKey
         let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
-        Task { try await remote.delete(path: "register", privateKey: privateKey) }
+        Task { try await remote.delete(path: "unregister", privateKey: privateKey) }
     }
 
     @Test("Push")
