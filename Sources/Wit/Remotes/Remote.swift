@@ -12,7 +12,13 @@ public protocol Remote: Actor {
     func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws
     func delete(path: String, privateKey: PrivateKey?) async throws
     func move(path: String, to toPath: String) async throws
-    func list(path: String) async throws -> [String]
+    func list(path: String, depth: Int?) async throws -> [String]
+}
+
+extension Remote {
+    public func list(path: String) async throws -> [String] {
+        try await list(path: path, depth: nil)
+    }
 }
 
 public enum RemoteError: Swift.Error, CustomStringConvertible {

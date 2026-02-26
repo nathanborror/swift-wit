@@ -123,10 +123,13 @@ public actor RemoteHTTP: Remote {
         logger.warning("RemoteHTTP.move not implemented")
     }
 
-    public func list(path: String) async throws -> [String] {
+    public func list(path: String, depth: Int?) async throws -> [String] {
         var url = baseURL/path
         if !path.hasSuffix("/") {
             url = baseURL/"\(path)/"
+        }
+        if let depth {
+            url = url.appending(queryItems: [.init(name: "depth", value: String(depth))])
         }
 
         var request = URLRequest(url: url)

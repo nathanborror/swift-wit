@@ -57,8 +57,9 @@ public actor RemoteDisk: Remote {
         try FileManager.default.moveItem(at: atURL, to: toURL)
     }
 
-    public func list(path: String) async throws -> [String] {
+    public func list(path: String, depth: Int? = nil) async throws -> [String] {
         let url = baseURL/path
+        let shallow = depth == nil || depth == 1
         return await Task.detached(priority: .userInitiated) {
             var out: [String] = []
             let enumerator = FileManager.default.enumerator(
@@ -69,6 +70,10 @@ public actor RemoteDisk: Remote {
             while let fileURL = enumerator?.nextObject() as? URL {
                 let standardizedFileURL = fileURL.standardizedFileURL
                 let relativePath = standardizedFileURL.path.replacingOccurrences(of: url.path + "/", with: "")
+                if shallow && relativePath.contains("/") {
+                    enumerator?.skipDescendants()
+                    continue
+                }
                 out.append(relativePath)
             }
             return out

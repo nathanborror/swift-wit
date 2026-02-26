@@ -153,7 +153,7 @@ public actor RemoteS3: Remote {
         logger.warning("RemoteS3.move not implemented")
     }
 
-    public func list(path: String) async throws -> [String] {
+    public func list(path: String, depth: Int? = nil) async throws -> [String] {
         guard let accessKey, let secretKey else {
             throw RemoteError.unauthorized
         }
@@ -169,7 +169,13 @@ public actor RemoteS3: Remote {
 
         var params = ["list-type": "2"]
         if !fullPrefix.isEmpty {
-            params["prefix"] = fullPrefix
+            params["prefix"] = fullPrefix.hasSuffix("/") ? fullPrefix : "\(fullPrefix)/"
+        }
+
+        // Use S3 delimiter for shallow listings
+        let shallow = depth == nil || depth == 1
+        if shallow {
+            params["delimiter"] = "/"
         }
 
         var request = try signature.sign(method: .get, bucket: bucket, params: params)
@@ -183,7 +189,7 @@ public actor RemoteS3: Remote {
         switch httpResponse.statusCode {
         case 200:
             logger.info("LIST (\(path))")
-            return parseListResponse(data: body, prefix: fullPrefix)
+            return parseListResponse(data: body, prefix: fullPrefix.hasSuffix("/") ? fullPrefix : "\(fullPrefix)/")
         default:
             logger.error("LIST Error (\(path), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8) ?? "Unknown")")
             throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))

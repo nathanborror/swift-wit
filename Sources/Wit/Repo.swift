@@ -579,7 +579,7 @@ extension Repo {
 
     /// Returns a dictionary of file references for files in the working directory keyed with their path.
     func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
-        let files = try await local.list(path: path)
+        let files = try await local.list(path: path, depth: 0)
         var out: [String: File] = [:]
         for relativePath in files {
             if shouldIgnore(path: relativePath) {
