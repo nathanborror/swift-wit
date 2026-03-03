@@ -1,13 +1,13 @@
 {
-  "originHash" : "36f164047d90bd0ab1c076352d8b3aa657faa9561fca5945f21fcb7b93d1d742",
+  "originHash" : "76f5a108aceae482b06fccc90699c8d42422c8da580d1f9ec6905e1182c6f789",
   "pins" : [
     {
-      "identity" : "swift-mime-generated",
+      "identity" : "swift-mime",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/nathanborror/swift-mime-generated",
+      "location" : "https://github.com/nathanborror/swift-mime",
       "state" : {
         "branch" : "main",
-        "revision" : "6073974c99d8387e1d5a516102720deb63c511c3"
+        "revision" : "4778d8fe7d21eb3c362f26e5eb1a323a1f1722aa"
       }
     }
   ],
