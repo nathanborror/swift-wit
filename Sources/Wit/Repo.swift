@@ -120,6 +120,10 @@ public actor Repo {
         return localURL.appending(path: path)
     }
 
+    public func localPath(hash: String, kind: Objects.Key.Kind) async -> String {
+        return await objects.objectPath(.init(hash: hash, kind: kind))
+    }
+
     public func localExists(_ path: String) -> Bool {
         FileManager.default.fileExists(atPath: localURL(path).path)
     }
