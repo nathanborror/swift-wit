@@ -3,7 +3,7 @@ import CryptoKit
 import Testing
 @testable import Wit
 
-let isServerRunning = false
+let isServerRunning = true
 
 @Suite("Remote Tests", .enabled(if: isServerRunning))
 final class RemoteTests {
@@ -137,6 +137,22 @@ final class RemoteTests {
 
         let remoteBinary = try await remoteObjects.retrieve(binary: binaryHash)
         #expect(remoteBinary == binaryData)
+    }
+
+    @Test("Complex push")
+    func pushComplex() async throws {
+        try await clientA.write("This is some foo", path: "foo.txt")
+        try await clientA.write("This is some bar", path: "bar.txt")
+        try await clientA.commit("First commit")
+        try await clientA.push(remote)
+
+        try await clientA.write("This is more foo", path: "foo.txt")
+        try await clientA.commit("Second commit")
+        try await clientA.push(remote)
+
+        try await clientA.writeBinary(Data("fake image data".utf8), path: "photo.jpg")
+        try await clientA.commit("Third commit")
+        try await clientA.push(remote)
     }
 
     @Test("List")

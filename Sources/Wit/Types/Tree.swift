@@ -23,13 +23,9 @@ public struct Tree: Sendable {
     }
 
     public init(data: Data) throws {
-        let message = try MIMEDecoder().decode(data)
-        guard let part = message.parts.first else {
-            throw Repo.Error.unknown("missing tree part")
-        }
-
+        let mime = try MIMEDecoder().decode(data)
         let options = CSVReadingOptions(hasHeaderRow: true, delimiter: ",")
-        let frame = try DataFrame(csvData: part.body.data(using: .utf8)!, options: options)
+        let frame = try DataFrame(csvData: mime.body.data(using: .utf8)!, options: options)
 
         self.entries = frame.rows.map {
             let hash = $0["hash"] as? String ?? ""
@@ -41,15 +37,12 @@ public struct Tree: Sendable {
     }
 
     public func encode() throws -> Data {
-        var contents = [
-            "Content-Type: text/csv; charset=utf8; header=present; profile=tree",
-            "",
-            "hash,mode,name"
-        ]
-        contents += entries.map { "\($0.hash),\($0.mode.rawValue),\"\($0.name)\"" }
-        guard let data = contents.joined(separator: "\n").data(using: .utf8) else {
-            throw Repo.Error.unknown("Failed to encode commit")
-        }
-        return data
+        var mime = MIMEMessage(headers: [.ContentType: "text/csv; charset=utf8; header=present; profile=tree"])
+        mime.body = """
+            hash,mode,name
+            
+            \(entries.map { "\($0.hash),\($0.mode.rawValue),\"\($0.name)\"" }.joined(separator: "\n"))
+            """
+        return MIMEEncoder().encode(mime)
     }
 }

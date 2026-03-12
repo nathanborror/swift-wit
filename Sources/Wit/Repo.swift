@@ -247,11 +247,8 @@ public actor Repo {
     /// Show commit logs.
     public func logs() async throws -> [Log] {
         guard let data = try? await read(Self.defaultLogsPath) else { return [] }
-        let message = try MIMEDecoder().decode(data)
-        guard let part = message.parts.first else {
-            throw Error.unknown("missing log part")
-        }
-        return try LogDecoder().decode(part.body)
+        let mime = try MIMEDecoder().decode(data)
+        return try LogDecoder().decode(mime.body)
     }
 
     // MARK: Grow and tweak common history
@@ -548,13 +545,10 @@ public actor Repo {
         guard let data = try? await remote.get(path: Self.defaultHeadPath) else {
             return nil
         }
-        guard let message = try? MIMEDecoder().decode(data) else {
+        guard let mime = try? MIMEDecoder().decode(data) else {
             return nil
         }
-        guard let part = message.parts.first else {
-            return nil
-        }
-        let hash = part.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hash = mime.body.trimmingCharacters(in: .whitespacesAndNewlines)
         return hash.isEmpty ? nil : hash
     }
 

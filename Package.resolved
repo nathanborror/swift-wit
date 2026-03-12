@@ -1,5 +1,5 @@
 {
-  "originHash" : "76f5a108aceae482b06fccc90699c8d42422c8da580d1f9ec6905e1182c6f789",
+  "originHash" : "725b727726f44d13bac5d033035bdfabb9b374114d09c2a23f1d7fed0cf14f2b",
   "pins" : [
     {
       "identity" : "swift-mime",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/nathanborror/swift-mime",
       "state" : {
         "branch" : "main",
-        "revision" : "4778d8fe7d21eb3c362f26e5eb1a323a1f1722aa"
+        "revision" : "630de093e670692229d0c0e364a1cd89e99314b8"
       }
     }
   ],
