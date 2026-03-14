@@ -679,12 +679,11 @@ extension Repo {
     }
 
     // TODO: Review generated code
-    func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [File], previousTreeCache: [String: Tree]) async throws -> String {
+    func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [File], previousTreeCache: [String: Objects.CachedTree]) async throws -> String {
 
-        // If this directory hasn't changed, reuse previous tree
-        if changedSubitems[directory] == nil, let previousTree = previousTreeCache[directory] {
-            let data = try previousTree.encode()
-            return await objects.computeHash(data)
+        // If this directory hasn't changed, reuse previous tree hash directly
+        if changedSubitems[directory] == nil, let cached = previousTreeCache[directory] {
+            return cached.hash
         }
 
         var entries: [Tree.Entry] = []
@@ -725,7 +724,7 @@ extension Repo {
                         name: filename,
                         hash: hash
                     ))
-                } else if let previousTree = previousTreeCache[directory], let previousEntry = previousTree.entries.first(where: { $0.name == filename }) {
+                } else if let cached = previousTreeCache[directory], let previousEntry = cached.tree.entries.first(where: { $0.name == filename }) {
                     entries.append(previousEntry)
                 }
             }

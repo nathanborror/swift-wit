@@ -109,12 +109,17 @@ public actor Objects {
         return files
     }
 
-    public func retrieveTreesRecursive(_ hash: String, path: String = "") async throws -> [String: Tree] {
+    public struct CachedTree: Sendable {
+        public let tree: Tree
+        public let hash: String
+    }
+
+    public func retrieveTreesRecursive(_ hash: String, path: String = "") async throws -> [String: CachedTree] {
         guard !hash.isEmpty else { return [:] }
 
-        var out: [String: Tree] = [:]
+        var out: [String: CachedTree] = [:]
         let tree = try await retrieve(tree: hash)
-        out[path] = tree
+        out[path] = CachedTree(tree: tree, hash: hash)
 
         for entry in tree.entries where entry.mode == .directory {
             let subPath = path.isEmpty ? entry.name : "\(path)/\(entry.name)"

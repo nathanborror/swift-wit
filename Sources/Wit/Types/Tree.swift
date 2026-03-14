@@ -40,7 +40,6 @@ public struct Tree: Sendable {
         var mime = MIMEMessage(headers: [.ContentType: "text/csv; charset=utf8; header=present; profile=tree"])
         mime.body = """
             hash,mode,name
-            
             \(entries.map { "\($0.hash),\($0.mode.rawValue),\"\($0.name)\"" }.joined(separator: "\n"))
             """
         return MIMEEncoder().encode(mime)
