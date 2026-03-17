@@ -3,14 +3,14 @@ import Foundation
 extension FileManager {
 
     /// Creates a directory if it doesn't already exist.
-    public func mkdir(_ url: URL) throws {
+    func mkdir(_ url: URL) throws {
         guard !fileExists(atPath: url.path) else { return }
         let directoryURL = url.hasDirectoryPath ? url : url.deletingLastPathComponent()
         try createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 
     /// Creates a file if it doesn't already exist, even if the given content is nil.
-    public func touch(_ url: URL, contents: String? = nil) throws {
+    func touch(_ url: URL, contents: String? = nil) throws {
         guard !fileExists(atPath: url.path) else { return }
         try mkdir(url)
         createFile(atPath: url.path, contents: contents?.data(using: .utf8))
@@ -19,11 +19,11 @@ extension FileManager {
 
 extension String {
 
-    public func trimmingSlashes() -> String {
+    func trimmingSlashes() -> String {
         trimmingCharacters(in: .init(charactersIn: "/"))
     }
 
-    public func trimmingSuffix(_ suffix: String) -> String {
+    func trimmingSuffix(_ suffix: String) -> String {
         guard self.hasSuffix(suffix) else { return self }
         return String(self.dropLast(suffix.count))
     }
@@ -31,17 +31,17 @@ extension String {
 
 extension Date {
 
-    public var toRFC1123: String {
+    var toRFC1123: String {
         let formatter = Date.RFC1123Formatter
         return formatter.string(from: self)
     }
 
-    public static func fromRFC1123(_ string: String) -> Date? {
+    static func fromRFC1123(_ string: String) -> Date? {
         let formatter = RFC1123Formatter
         return formatter.date(from: string)
     }
 
-    public static let RFC1123Formatter: DateFormatter = {
+    static let RFC1123Formatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: -8 * 3600)
@@ -52,7 +52,7 @@ extension Date {
 
 extension Collection {
 
-    public subscript(safe index: Index) -> Element? {
+    subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
 }
