@@ -186,22 +186,42 @@ public actor Repo {
     /// Create an empty repository.
     public func initialize() async throws {
         let manager = FileManager.default
-
-        try manager.touch(localURL/Self.defaultConfigPath)
-        try manager.touch(localURL/Self.defaultSecretsPath)
-        try manager.touch(localURL/Self.defaultHeadPath)
-        try manager.touch(localURL/Self.defaultLogsPath)
-
         try manager.mkdir(localURL/Self.defaultObjectsPath)
-        try manager.mkdir(localURL/Self.defaultPath/"remotes"/"origin")
 
-        try await write("""
-            Date: \(Date.now.toRFC1123)
-            Content-Type: text/csv; charset=utf8; header=present; profile=logs 
-            
-            timestamp,hash,parent,message
-            
-            """, path: Self.defaultLogsPath)
+        // Create config
+        let config = MIMEMessage(headers: [
+            .Date: Date.now.toRFC1123,
+            .ContentType: "text/ini",
+        ])
+        let configData = MIMEEncoder().encode(config)
+        try await write(configData, path: Self.defaultConfigPath)
+
+        // Create secrets
+        let secrets = MIMEMessage(headers: [
+            .Date: Date.now.toRFC1123,
+            .ContentType: "text/ini",
+            .ContentEncoding: "age; mode=x25519",
+            .ContentTransferEncoding: "base64",
+        ])
+        let secretsData = MIMEEncoder().encode(secrets)
+        try await write(secretsData, path: Self.defaultSecretsPath)
+
+        // Create HEAD
+        let head = MIMEMessage(headers: [
+            .Date: Date.now.toRFC1123,
+            .ContentType: "text/plain",
+        ])
+        let headData = MIMEEncoder().encode(head)
+        try await write(headData, path: Self.defaultHeadPath)
+
+        // Create logs
+        let logs = MIMEMessage(
+            headers: [
+                .ContentType: "text/csv; charset=utf8; header=present; profile=logs",
+            ],
+            body: "timestamp,hash,parent,message\n")
+        let logsData = MIMEEncoder().encode(logs)
+        try await write(logsData, path: Self.defaultLogsPath)
 
         await postStatusNotification("Initialized repository")
     }
