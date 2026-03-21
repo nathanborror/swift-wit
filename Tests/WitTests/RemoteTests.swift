@@ -143,10 +143,11 @@ final class RemoteTests {
     func pushComplex() async throws {
         try await clientA.write("This is some foo", path: "foo.txt")
         try await clientA.write("This is some bar", path: "bar.txt")
+        try await clientA.move("foo.txt", to: "baz/foo.txt")
         try await clientA.commit("First commit")
         try await clientA.push(remote)
 
-        try await clientA.write("This is more foo", path: "foo.txt")
+        try await clientA.write("This is more foo", path: "baz/foo.txt")
         try await clientA.commit("Second commit")
         try await clientA.push(remote)
 

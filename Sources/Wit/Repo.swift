@@ -186,7 +186,7 @@ public actor Repo {
     /// Create an empty repository.
     public func initialize() async throws {
         let manager = FileManager.default
-        try manager.mkdir(localURL/Self.defaultObjectsPath)
+        try manager.makeIntermediateDirectories(localURL/Self.defaultObjectsPath)
 
         // Create config
         let config = MIMEMessage(headers: [
@@ -765,7 +765,7 @@ extension Repo {
             case .normal:
                 let data = try await retrieveBlob(entry.hash, remote: remote)
                 let fileURL = localURL/path/entry.name
-                try FileManager.default.mkdir(fileURL)
+                try FileManager.default.makeIntermediateDirectories(fileURL)
                 try data.write(to: fileURL)
             }
         }

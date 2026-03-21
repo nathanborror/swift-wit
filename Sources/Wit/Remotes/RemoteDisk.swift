@@ -34,7 +34,7 @@ public actor RemoteDisk: Remote {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         } else {
             let data = data ?? Data()
-            try FileManager.default.mkdir(url)
+            try FileManager.default.makeIntermediateDirectories(url)
             try data.write(to: url, options: .atomic)
             cache[path] = data
         }
@@ -54,6 +54,7 @@ public actor RemoteDisk: Remote {
         let atURL = baseURL/path
         let toURL = baseURL/toPath
         guard atURL != toURL else { return }
+        try FileManager.default.makeIntermediateDirectories(toURL)
         try FileManager.default.moveItem(at: atURL, to: toURL)
     }
 

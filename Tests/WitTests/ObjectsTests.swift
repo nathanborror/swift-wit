@@ -118,7 +118,7 @@ final class ObjectsTests {
         let blob = content.data(using: .utf8)!
         let url = baseURL/"test.txt"
 
-        try FileManager.default.mkdir(url)
+        try FileManager.default.makeIntermediateDirectories(url)
         try content.write(to: url, atomically: true, encoding: .utf8)
 
         let blobHash = await storage.computeHash(blob)
