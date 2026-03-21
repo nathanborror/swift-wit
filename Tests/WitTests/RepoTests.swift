@@ -153,6 +153,23 @@ final class RepoTests {
         #expect(logs.count == 2)
     }
 
+    @Test("Commit revert")
+    func commitRevert() async throws {
+        let (path, repo) = NewRepo()
+        defer { RemoveDirectory(path) }
+
+        try await repo.initialize()
+        try await repo.write("Some text", path: "Documents/foo.txt")
+        let commit1_Hash = try await repo.commit("Initial commit")
+        #expect(commit1_Hash.isEmpty == false)
+        #expect(try await repo.objects.exists(key: .init(hash: commit1_Hash, kind: .commit)) == true)
+
+        try await repo.write("Some edited text", path: "Documents/foo.txt")
+        try await repo.write("Some text", path: "Documents/foo.txt")
+        let status = try await repo.status()
+        #expect(status.count == 0)
+    }
+
     @Test("File References")
     func fileReferences() async throws {
         let (path, repo) = NewRepo()
