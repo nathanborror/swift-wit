@@ -1,7 +1,7 @@
 import Foundation
 
 public struct File: Identifiable, Sendable {
-    public let path: FilePath
+    public let path: String
     public let hash: String?
     public let previousHash: String?
     public let state: State?
@@ -15,7 +15,7 @@ public struct File: Identifiable, Sendable {
         case deleted
     }
 
-    public init(path: FilePath, hash: String? = nil, previousHash: String? = nil, state: State? = nil, mode: Tree.Entry.Mode) {
+    public init(path: String, hash: String? = nil, previousHash: String? = nil, state: State? = nil, mode: Tree.Entry.Mode) {
         self.path = path
         self.hash = hash
         self.previousHash = previousHash

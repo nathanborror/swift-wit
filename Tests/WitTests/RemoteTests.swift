@@ -111,7 +111,7 @@ final class RemoteTests {
     @Test("Push binaries")
     func pushBinaries() async throws {
         let binaryData = Data("fake image data".utf8)
-        let filePath: FilePath = "photo.jpg"
+        let filePath = "photo.jpg"
 
         // Write binary — should only store locally, not on remote
         try await clientA.writeBinary(binaryData, path: filePath)

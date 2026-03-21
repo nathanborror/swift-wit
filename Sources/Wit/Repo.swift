@@ -84,8 +84,8 @@ public actor Repo {
         try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func writeBinary(_ data: Data, path: FilePath) async throws {
-        guard let ext = path.ext else {
+    public func writeBinary(_ data: Data, path: String) async throws {
+        guard let ext = path.split(separator: ".").last.map(String.init) else {
             throw Error.missingExtension
         }
         let hash = try await objects.store(binary: data, ext: ext, privateKey: privateKey)
@@ -491,7 +491,7 @@ public actor Repo {
                 do {
                     let key = Objects.Key(hash: binaryHash, kind: .binary)
                     if try await remoteObjects.exists(key: key) { continue }
-                    guard let ext = FilePath(binaryHash).ext else { continue }
+                    guard let ext = binaryHash.split(separator: ".").last.map(String.init) else { continue }
                     let binary = try await objects.retrieve(binary: binaryHash)
                     let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
                 } catch {
@@ -717,7 +717,7 @@ extension Repo {
             let filename = item.lastPathComponent
             let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             let isRegularFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
-            let relativePath: FilePath = directory.isEmpty ? filename : "\(directory)/\(filename)"
+            let relativePath = directory.isEmpty ? filename : "\(directory)/\(filename)"
 
             guard !shouldIgnore(path: relativePath) else {
                 continue
@@ -798,7 +798,7 @@ extension Repo {
 
 extension Repo {
 
-    private func shouldIgnore(path: FilePath) -> Bool {
+    private func shouldIgnore(path: String) -> Bool {
         for ignore in ignores {
             let re = try! Regex(ignore)
             if path.firstMatch(of: re) != nil {
