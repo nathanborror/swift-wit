@@ -83,30 +83,30 @@ public actor Objects {
         return try await remote.get(path: path)
     }
 
-    public func retrieveFileReferencesRecursive(_ tree: Tree, path: String = "") async throws -> [String: File] {
-        var files: [String: File] = [:]
+    public func retrieveFileReferencesRecursive(_ tree: Tree, path: String = "") async throws -> [String: Blob] {
+        var blobs: [String: Blob] = [:]
         for entry in tree.entries {
             switch entry.mode {
             case .directory:
                 let tree = try await retrieve(tree: entry.hash)
                 if path.isEmpty {
                     let additional = try await retrieveFileReferencesRecursive(tree, path: entry.name)
-                    files.merge(additional) { _, new in new }
+                    blobs.merge(additional) { _, new in new }
                 } else {
                     let additional = try await retrieveFileReferencesRecursive(tree, path: "\(path)/\(entry.name)")
-                    files.merge(additional) { _, new in new }
+                    blobs.merge(additional) { _, new in new }
                 }
 
             case .normal:
                 if path.isEmpty {
-                    files[entry.name] = .init(path: entry.name, hash: entry.hash, mode: .normal)
+                    blobs[entry.name] = .init(path: entry.name, hash: entry.hash)
                 } else {
                     let filePath = "\(path)/\(entry.name)"
-                    files[filePath] = .init(path: filePath, hash: entry.hash, mode: .normal)
+                    blobs[filePath] = .init(path: filePath, hash: entry.hash)
                 }
             }
         }
-        return files
+        return blobs
     }
 
     public struct CachedTree: Sendable {

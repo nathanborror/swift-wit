@@ -229,37 +229,37 @@ public actor Repo {
     // MARK: Examine history and state
 
     /// Show the working tree status.
-    public func status(_ ref: Ref = .head) async throws -> [File] {
+    public func status(_ ref: Ref = .head) async throws -> [String: Change] {
         let commitHash = try? await retrieveHash(ref: ref)
 
         // Gather file references within the commit
-        let fileReferences: [String: File]
+        let blobReferences: [String: Blob]
         if let commitHash {
             let commit = try await objects.retrieve(commit: commitHash)
             let tree = try await objects.retrieve(tree: commit.tree)
-            fileReferences = try await objects.retrieveFileReferencesRecursive(tree)
+            blobReferences = try await objects.retrieveFileReferencesRecursive(tree)
         } else {
-            fileReferences = [:]
+            blobReferences = [:]
         }
 
         // Gather file references within the working directory
-        let fileReferencesCurrent = try await retrieveCurrentFileReferences()
+        let blobReferencesCurrent = try await retrieveCurrentBlobReferences()
 
         // Compare commit references with current files and find additions and modifications
-        var out: [File] = []
-        for (path, file) in fileReferencesCurrent {
-            if let previousRef = fileReferences[path] {
+        var out: [String: Change] = [:]
+        for (path, file) in blobReferencesCurrent {
+            if let previousRef = blobReferences[path] {
                 if previousRef.hash != file.hash {
-                    out.append(file.apply(state: .modified, previousHash: previousRef.hash))
+                    out[file.path] = .modified
                 }
             } else {
-                out.append(file.apply(state: .added, previousHash: nil))
+                out[file.path] = .added
             }
         }
 
         // Find deletions
-        for (path, file) in fileReferences where fileReferencesCurrent[path] == nil {
-            out.append(file.apply(state: .deleted, previousHash: nil))
+        for (path, file) in blobReferences where blobReferencesCurrent[path] == nil {
+            out[file.path] = .deleted
         }
         return out
     }
@@ -277,14 +277,19 @@ public actor Repo {
     @discardableResult
     public func commit(_ message: String) async throws -> String {
         let head = await readHEAD(remote: local)
-        var files = try await status()
+        let changes = try await status()
+
+        var blobs: [Blob] = []
 
         // Store blobs, generate hashes and update the file references before building new tree structure
-        for (index, file) in files.enumerated() {
-            guard file.state != .deleted else { continue }
-            let data = try await local.get(path: file.path)
+        for (path, change) in changes {
+            guard change != .deleted else {
+                blobs.append(.init(path: path))
+                continue
+            }
+            let data = try await local.get(path: path)
             let hash = try await objects.store(blob: data, privateKey: privateKey)
-            files[index] = file.apply(hash: hash)
+            blobs.append(.init(path: path, hash: hash))
         }
 
         let parentCommit: Commit?
@@ -296,7 +301,7 @@ public actor Repo {
 
         // Build new tree structure
         let treeHash = try await updateTreesForChangedPaths(
-            files: files,
+            blobs: blobs,
             previousTreeHash: parentCommit?.tree ?? ""
         )
 
@@ -369,7 +374,7 @@ public actor Repo {
             let commitTree = try await objects.retrieve(tree: commit.tree)
             let commitFiles = try await objects.retrieveFileReferencesRecursive(commitTree)
 
-            let parentFiles: [String: File]
+            let parentFiles: [String: Blob]
             if let parent = commit.parent {
                 let parentCommit = try await objects.retrieve(commit: parent)
                 let parentTree = try await objects.retrieve(tree: parentCommit.tree)
@@ -604,16 +609,16 @@ extension Repo {
     }
 
     /// Returns a dictionary of file references for files in the working directory keyed with their path.
-    func retrieveCurrentFileReferences(at path: String = "") async throws -> [String: File] {
-        let files = try await local.list(path: path, depth: 0)
-        var out: [String: File] = [:]
-        for relativePath in files {
+    func retrieveCurrentBlobReferences(at path: String = "") async throws -> [String: Blob] {
+        let paths = try await local.list(path: path, depth: 0)
+        var out: [String: Blob] = [:]
+        for relativePath in paths {
             if shouldIgnore(path: relativePath) {
                 continue
             }
             let url = localURL.appending(path: relativePath)
             if let hash = try? await objects.hash(for: url) {
-                out[relativePath] = .init(path: relativePath, hash: hash, mode: .normal)
+                out[relativePath] = .init(path: relativePath, hash: hash)
             }
         }
         return out
@@ -668,11 +673,11 @@ extension Repo {
     }
 
     // TODO: Review generated code
-    func updateTreesForChangedPaths(files: [File], previousTreeHash: String) async throws -> String {
+    func updateTreesForChangedPaths(blobs: [Blob], previousTreeHash: String) async throws -> String {
         var changesByDirectory: [String: Set<String>] = [:]
 
-        for file in files {
-            let parts = file.path.split(separator: "/")
+        for blob in blobs {
+            let parts = blob.path.split(separator: "/")
             var currentPath = ""
 
             // Mark all parent directories as changed
@@ -693,13 +698,13 @@ extension Repo {
         return try await buildTreeRecursively(
             directory: "",
             changedSubitems: changesByDirectory,
-            files: files,
+            blobs: blobs,
             previousTreeCache: previousTreeCache
         )
     }
 
     // TODO: Review generated code
-    func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], files: [File], previousTreeCache: [String: Objects.CachedTree]) async throws -> String {
+    func buildTreeRecursively(directory: String, changedSubitems: [String: Set<String>], blobs: [Blob], previousTreeCache: [String: Objects.CachedTree]) async throws -> String {
 
         // If this directory hasn't changed, reuse previous tree hash directly
         if changedSubitems[directory] == nil, let cached = previousTreeCache[directory] {
@@ -728,7 +733,7 @@ extension Repo {
                 let subTreeHash = try await buildTreeRecursively(
                     directory: relativePath,
                     changedSubitems: changedSubitems,
-                    files: files,
+                    blobs: blobs,
                     previousTreeCache: previousTreeCache
                 )
                 entries.append(.init(
@@ -738,7 +743,7 @@ extension Repo {
                 ))
             } else if isRegularFile {
                 // Use new blob hash or get from previous tree
-                if let file = files.first(where: { $0.path == relativePath }), let hash = file.hash {
+                if let blob = blobs.first(where: { $0.path == relativePath }), let hash = blob.hash {
                     entries.append(.init(
                         mode: .normal,
                         name: filename,
@@ -810,20 +815,20 @@ extension Repo {
 
     // TODO: Review generated code
     // Build a tree from a flat dictionary of file references
-    private func buildTreeFromFiles(_ files: [String: File]) async throws -> String {
+    private func buildTreeFromFiles(_ blobs: [String: Blob]) async throws -> String {
         var rootEntries: [Tree.Entry] = []
         var subTrees: [String: [Tree.Entry]] = [:]
 
         // Group files by directory
-        for (path, file) in files {
+        for (path, blob) in blobs {
             let components = path.split(separator: "/").map(String.init)
 
             if components.count == 1 {
                 // File in root directory
                 rootEntries.append(.init(
-                    mode: file.mode,
+                    mode: .normal,
                     name: components[0],
-                    hash: file.hash ?? ""
+                    hash: blob.hash ?? ""
                 ))
             } else {
                 // File in subdirectory
@@ -831,9 +836,9 @@ extension Repo {
                 let fileName = components.last!
 
                 subTrees[dirPath, default: []].append(.init(
-                    mode: file.mode,
+                    mode: .normal,
                     name: fileName,
-                    hash: file.hash ?? ""
+                    hash: blob.hash ?? ""
                 ))
             }
         }

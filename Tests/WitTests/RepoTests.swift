@@ -122,7 +122,7 @@ final class RepoTests {
 
         try await repo.initialize()
         try await repo.write("", path: ".DS_Store") // Should be ignored
-        try await repo.write("", path: "Documents/foo.txt") // Should be ignored
+        try await repo.write("", path: "Documents/foo.txt")
         let commit1_Hash = try await repo.commit("Initial commit")
         #expect(commit1_Hash.isEmpty == false)
         #expect(try await repo.objects.exists(key: .init(hash: commit1_Hash, kind: .commit)) == true)
@@ -178,10 +178,12 @@ final class RepoTests {
         try await repo.write("This is some foo", path: "foo.txt")
         try await repo.write("This is some bar", path: "Documents/bar.txt")
 
-        let references = try await repo.retrieveCurrentFileReferences()
+        let references = try await repo.retrieveCurrentBlobReferences()
         #expect(references.count == 2)
-        #expect(references["foo.txt"]?.state == nil)
-        #expect(references["Documents/bar.txt"]?.state == nil)
+
+        let changes = try await repo.status()
+        #expect(changes["foo.txt"] == .added)
+        #expect(changes["Documents/bar.txt"] == .added)
     }
 
     @Test("Tree optimization")
