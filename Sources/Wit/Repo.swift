@@ -23,14 +23,14 @@ public actor Repo {
         case commit(String)
     }
 
-    let baseURL: URL
-    let repoPath: String
-    let remoteLocal: any Remote
 
+    let remoteLocal: any Remote
     let objects: Objects
     let privateKey: Remote.PrivateKey?
     let ignores: [String]
 
+    public let baseURL: URL
+    public let repoPath: String
     public let configPath: String
     public let secretsPath: String
     public let headPath: String
