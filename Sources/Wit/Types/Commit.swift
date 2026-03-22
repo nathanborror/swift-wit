@@ -24,7 +24,7 @@ public struct Commit: Sendable {
         let frame = try DataFrame(csvData: mime.body.data(using: .utf8)!, options: options)
 
         guard let row = frame.rows.first else {
-            throw Repo.Error.unknown("malformed commit CSV")
+            throw RepoSession.Error.unknown("malformed commit CSV")
         }
         self.tree = row["tree"]! as? String ?? ""
         self.parent = row["parent"] as? String

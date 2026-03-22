@@ -5,7 +5,7 @@ import MIME
 
 private let logger = Logger(subsystem: "Repo", category: "Wit")
 
-public actor Repo {
+public actor RepoSession {
 
     public enum Error: Swift.Error {
         case missingHEAD
@@ -590,7 +590,7 @@ public actor Repo {
 
 // MARK: - Private
 
-extension Repo {
+extension RepoSession {
 
     func retrieveHash(ref: Ref) async throws -> String {
         switch ref {
@@ -797,7 +797,7 @@ extension Repo {
     }
 }
 
-extension Repo {
+extension RepoSession {
 
     private func shouldIgnore(path: String) -> Bool {
         for ignore in ignores {
@@ -908,7 +908,7 @@ extension Repo {
 
 // MARK: - Notifications
 
-extension Repo {
+extension RepoSession {
 
     public static let statusNotification = Notification.Name("wit.repo.status")
 
@@ -924,7 +924,7 @@ extension Repo {
 
 // MARK: - Encyrption
 
-extension Repo {
+extension RepoSession {
 
     public func dataDecrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
         guard !data.isEmpty else {

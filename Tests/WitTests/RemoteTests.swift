@@ -12,10 +12,10 @@ final class RemoteTests {
     let remote: Remote
 
     let clientA_workingFolder: String
-    let clientA: Repo
+    let clientA: RepoSession
 
     let clientB_workingFolder: String
-    let clientB: Repo
+    let clientB: RepoSession
 
     init() async throws {
         self.privateKey = Remote.PrivateKey()
@@ -27,7 +27,7 @@ final class RemoteTests {
         let clientA_baseURL = URL.documentsDirectory.appending(path: clientA_workingFolder)
         let clientB_baseURL = URL.documentsDirectory.appending(path: clientB_workingFolder)
 
-        self.clientA = Repo(baseURL: clientA_baseURL, privateKey: privateKey)
+        self.clientA = RepoSession(baseURL: clientA_baseURL, privateKey: privateKey)
         try await clientA.initialize()
 
         let config = """
@@ -46,7 +46,7 @@ final class RemoteTests {
         let configData = try await clientA.read(clientA.configPath)
         try await registerRemote.put(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
 
-        self.clientB = Repo(baseURL: clientB_baseURL, privateKey: privateKey)
+        self.clientB = RepoSession(baseURL: clientB_baseURL, privateKey: privateKey)
         try await self.clientB.initialize()
     }
 
