@@ -24,26 +24,29 @@ final class RemoteTests {
         self.clientA_workingFolder = "A-\(identity)"
         self.clientB_workingFolder = "B-\(identity)"
 
-        self.clientA = Repo(baseURL: .documentsDirectory, folder: clientA_workingFolder, privateKey: privateKey)
+        let clientA_baseURL = URL.documentsDirectory.appending(path: clientA_workingFolder)
+        let clientB_baseURL = URL.documentsDirectory.appending(path: clientB_workingFolder)
+
+        self.clientA = Repo(baseURL: clientA_baseURL, privateKey: privateKey)
         try await clientA.initialize()
 
         let config = """
             Date: \(Date.now.toRFC1123)
             Content-Type: text/ini
             
-            address = \(identity)@wild.local
+            address = \(identity)@local
             publicKey = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
             """
-        try await clientA.write(config, path: Repo.defaultConfigPath)
+        try await clientA.write(config, path: clientA.configPath)
 
         self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/home/\(identity)")!)
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
-        let configData = try await clientA.read(Repo.defaultConfigPath)
+        let configData = try await clientA.read(clientA.configPath)
         try await registerRemote.put(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
 
-        self.clientB = Repo(baseURL: .documentsDirectory, folder: clientB_workingFolder, privateKey: privateKey)
+        self.clientB = Repo(baseURL: clientB_baseURL, privateKey: privateKey)
         try await self.clientB.initialize()
     }
 
@@ -93,7 +96,7 @@ final class RemoteTests {
 
         // ClientB: Clone
         try await clientB.clone(remote)
-        let clientB_HEAD = await clientB.readHEAD(remote: clientB.local)
+        let clientB_HEAD = await clientB.readHEAD(remote: clientB.remoteLocal)
         #expect(clientB_HEAD == clientA_commit3)
 
         // ClientA: Second commit
@@ -123,7 +126,7 @@ final class RemoteTests {
         let binaryHash = String(aliasContent[range.upperBound...].prefix(while: { !$0.isWhitespace }))
 
         // Verify the binary does NOT exist on the remote yet
-        let remoteObjects = Objects(remote: remote, objectsPath: Repo.defaultObjectsPath)
+        let remoteObjects = Objects(remote: remote, objectsPath: await clientA.objectsPath)
         let existsBefore = try await remoteObjects.exists(key: .init(hash: binaryHash, kind: .binary))
         #expect(existsBefore == false)
 
@@ -162,7 +165,7 @@ final class RemoteTests {
         try await clientA.commit("First commit")
         try await clientA.push(remote)
 
-        let parent = "\(Repo.defaultPath)/objects"
+        let parent = await clientA.objectsPath
         let items = try await remote.list(path: parent)
         #expect(items.count == 3)
 

@@ -20,8 +20,8 @@ final class RepoTests {
         #expect(repoA_Commit1_Hash != repoA_Commit2_Hash)
 
         // Clone Repo-A into Repo-B
-        try await repoB.clone(repoA.local)
-        let repoB_HEAD = await repoB.readHEAD(remote: repoB.local)!
+        try await repoB.clone(repoA.remoteLocal)
+        let repoB_HEAD = await repoB.readHEAD(remote: repoB.remoteLocal)!
         let repoB_HEAD_Commit = try await repoB.objects.retrieve(commit: repoB_HEAD)
         let repoB_HEAD_Commit_Tree = try await repoB.objects.retrieve(tree: repoB_HEAD_Commit.tree)
         #expect(repoB_HEAD == repoA_Commit2_Hash)
@@ -34,8 +34,8 @@ final class RepoTests {
         #expect(repoB_Commit3_Tree.entries.count == 3)
 
         // Push Repo-B to Repo-A
-        try await repoB.push(repoA.local)
-        #expect(await repoA.readHEAD(remote: repoA.local) == repoB_Commit3_Hash)
+        try await repoB.push(repoA.remoteLocal)
+        #expect(await repoA.readHEAD(remote: repoA.remoteLocal) == repoB_Commit3_Hash)
     }
 
     @Test("Rebase")
@@ -51,8 +51,8 @@ final class RepoTests {
         let repoA_commit1_hash = try await CommitFile(repoA, path: "foo.txt")
 
         // Clone Repo-A into Repo-B
-        try await repoB.clone(repoA.local)
-        #expect(await repoB.readHEAD(remote: repoB.local) == repoA_commit1_hash)
+        try await repoB.clone(repoA.remoteLocal)
+        #expect(await repoB.readHEAD(remote: repoB.remoteLocal) == repoA_commit1_hash)
 
         // Commit a new file to Repo-A (commit 2)
         let repoA_commit2_hash = try await CommitFile(repoA, path: "bar.txt")
@@ -70,7 +70,7 @@ final class RepoTests {
         #expect(repoB_logs1.count == 2)
 
         // Rebase Repo-B
-        let repoB_HEAD = try await repoB.rebase(repoA.local)
+        let repoB_HEAD = try await repoB.rebase(repoA.remoteLocal)
         let repoB_HEAD_commit = try await repoB.objects.retrieve(commit: repoB_HEAD)
         let repoB_HEAD_tree = try await repoB.objects.retrieve(tree: repoB_HEAD_commit.tree)
         #expect(repoB_HEAD_tree.entries.count == 3)
@@ -127,7 +127,7 @@ final class RepoTests {
         #expect(commit1_Hash.isEmpty == false)
         #expect(try await repo.objects.exists(key: .init(hash: commit1_Hash, kind: .commit)) == true)
 
-        let head = await repo.readHEAD(remote: repo.local)
+        let head = await repo.readHEAD(remote: repo.remoteLocal)
         #expect(head == commit1_Hash)
 
         let commit1 = try await repo.objects.retrieve(commit: commit1_Hash)

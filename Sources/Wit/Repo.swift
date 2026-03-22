@@ -6,12 +6,6 @@ import MIME
 private let logger = Logger(subsystem: "Repo", category: "Wit")
 
 public actor Repo {
-    public static let defaultPath = ".wild"
-    public static let defaultConfigPath = "\(defaultPath)/config"
-    public static let defaultSecretsPath = "\(defaultPath)/secrets"
-    public static let defaultObjectsPath = "\(defaultPath)/objects"
-    public static let defaultHeadPath = "\(defaultPath)/HEAD"
-    public static let defaultLogsPath = "\(defaultPath)/logs"
 
     public enum Error: Swift.Error {
         case missingHEAD
@@ -29,21 +23,34 @@ public actor Repo {
         case commit(String)
     }
 
-    let localURL: URL
-    let local: any Remote
+    let baseURL: URL
+    let repoPath: String
+    let remoteLocal: any Remote
+
     let objects: Objects
     let privateKey: Remote.PrivateKey?
     let ignores: [String]
 
-    public init(baseURL: URL, folder: String, objectsPath: String? = nil, privateKey: Remote.PrivateKey? = nil, ignores: [String] = [".DS_Store"]) {
-        self.localURL = baseURL.appending(path: folder)
+    public let configPath: String
+    public let secretsPath: String
+    public let headPath: String
+    public let logsPath: String
+    public let objectsPath: String
+
+    public init(baseURL: URL, repoPath: String = ".wit", privateKey: Remote.PrivateKey? = nil, ignores: [String] = [".DS_Store"]) {
+        self.repoPath = repoPath
+        self.baseURL = baseURL
+        self.remoteLocal = RemoteDisk(baseURL: baseURL)
+
+        self.objects = Objects(remote: remoteLocal, objectsPath: "\(repoPath)/objects")
         self.privateKey = privateKey
-        self.local = RemoteDisk(baseURL: localURL)
-        self.objects = Objects(
-            remote: local,
-            objectsPath: objectsPath ?? Self.defaultObjectsPath
-        )
-        self.ignores = ["^.wild"] + ignores // Always ignore `.wild`
+        self.ignores = ["^\(repoPath)"] + ignores // Always ignore the repo path
+
+        self.configPath = repoPath+"/config"
+        self.secretsPath = repoPath+"/secrets"
+        self.headPath = repoPath+"/HEAD"
+        self.logsPath = repoPath+"/logs"
+        self.objectsPath = repoPath+"/objects"
     }
 
     // MARK: Convenience
@@ -70,7 +77,7 @@ public actor Repo {
 
     /// Reads data from the path in the working directory.
     public func read(_ path: String) async throws -> Data {
-        try await local.get(path: path)
+        try await remoteLocal.get(path: path)
     }
 
     /// Writes string to the path in the working directory.
@@ -81,7 +88,7 @@ public actor Repo {
 
     /// Writes data to the path in the  working directory.
     public func write(_ data: Data, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
-        try await local.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
+        try await remoteLocal.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
     public func writeBinary(_ data: Data, path: String) async throws {
@@ -89,18 +96,21 @@ public actor Repo {
             throw Error.missingExtension
         }
         let hash = try await objects.store(binary: data, ext: ext, privateKey: privateKey)
-        let aliasData = """
-            Date: \(Date.now.toRFC1123)
-            Content-Type: application/x-wild-alias
-            Alias-Hash: \(hash)
-            
-            """.data(using: .utf8)!
-        try await local.put(path: "\(path).alias", data: aliasData, directoryHint: .notDirectory, privateKey: privateKey)
+
+        // TODO: Make caller provide this
+        // Instead of hard-coding this content the caller should provide what alias headers look like.
+        let content = MIMEMessage(headers: [
+            .Date: Date.now.toRFC1123,
+            .ContentType: "application/x-wild-alias",
+            "Alias-Hash": hash,
+        ])
+        let data = MIMEEncoder().encode(content)
+        try await remoteLocal.put(path: "\(path).alias", data: data, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     /// Deletes file from working directory.
     public func delete(_ path: String) async throws {
-        try await local.delete(path: path, privateKey: privateKey)
+        try await remoteLocal.delete(path: path, privateKey: privateKey)
     }
 
     public func deleteBinary(_ hash: String) async throws {
@@ -108,16 +118,16 @@ public actor Repo {
     }
 
     public func move(_ path: String, to toPath: String) async throws {
-        try await local.move(path: path, to: toPath)
+        try await remoteLocal.move(path: path, to: toPath)
     }
 
     public func localURL(_ path: String) -> URL {
-        localURL.appending(path: path)
+        baseURL.appending(path: path)
     }
 
     public func localURL(hash: String, kind: Objects.Key.Kind) async -> URL {
         let path = await objects.objectPath(.init(hash: hash, kind: kind))
-        return localURL.appending(path: path)
+        return baseURL.appending(path: path)
     }
 
     public func localPath(hash: String, kind: Objects.Key.Kind) async -> String {
@@ -140,19 +150,15 @@ public actor Repo {
     public func clone(_ remote: Remote, bare: Bool = false, optimistic: Bool = false) async throws {
         try await initialize()
 
-        let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
+        let remoteObjects = Objects(remote: remote, objectsPath: objectsPath)
         guard let remoteHead = await readHEAD(remote: remote) else {
             print("Remote HEAD missing")
             return
         }
-        try await writeHEAD(hash: remoteHead, remote: local)
+        try await writeHEAD(hash: remoteHead, remote: remoteLocal)
 
         // Copy necessary files
-        for path in [
-            Self.defaultConfigPath,
-            Self.defaultSecretsPath,
-            Self.defaultLogsPath,
-        ] {
+        for path in [configPath, secretsPath, logsPath] {
             if let data = try? await remote.get(path: path) {
                 try await write(data, path: path)
             }
@@ -186,7 +192,7 @@ public actor Repo {
     /// Create an empty repository.
     public func initialize() async throws {
         let manager = FileManager.default
-        try manager.makeIntermediateDirectories(localURL/Self.defaultObjectsPath)
+        try manager.makeIntermediateDirectories(baseURL/objectsPath)
 
         // Create config
         let config = MIMEMessage(headers: [
@@ -194,7 +200,7 @@ public actor Repo {
             .ContentType: "text/ini",
         ])
         let configData = MIMEEncoder().encode(config)
-        try await write(configData, path: Self.defaultConfigPath)
+        try await write(configData, path: configPath)
 
         // Create secrets
         let secrets = MIMEMessage(headers: [
@@ -204,7 +210,7 @@ public actor Repo {
             .ContentTransferEncoding: "base64",
         ])
         let secretsData = MIMEEncoder().encode(secrets)
-        try await write(secretsData, path: Self.defaultSecretsPath)
+        try await write(secretsData, path: secretsPath)
 
         // Create HEAD
         let head = MIMEMessage(headers: [
@@ -212,7 +218,7 @@ public actor Repo {
             .ContentType: "text/plain",
         ])
         let headData = MIMEEncoder().encode(head)
-        try await write(headData, path: Self.defaultHeadPath)
+        try await write(headData, path: headPath)
 
         // Create logs
         let logs = MIMEMessage(
@@ -221,7 +227,7 @@ public actor Repo {
             ],
             body: "timestamp,hash,parent,message\n")
         let logsData = MIMEEncoder().encode(logs)
-        try await write(logsData, path: Self.defaultLogsPath)
+        try await write(logsData, path: logsPath)
 
         await postStatusNotification("Initialized repository")
     }
@@ -266,7 +272,7 @@ public actor Repo {
 
     /// Show commit logs.
     public func logs() async throws -> [Log] {
-        guard let data = try? await read(Self.defaultLogsPath) else { return [] }
+        guard let data = try? await read(logsPath) else { return [] }
         let mime = try MIMEDecoder().decode(data)
         return try LogDecoder().decode(mime.body)
     }
@@ -276,7 +282,7 @@ public actor Repo {
     /// Record changes to the repository.
     @discardableResult
     public func commit(_ message: String) async throws -> String {
-        let head = await readHEAD(remote: local)
+        let head = await readHEAD(remote: remoteLocal)
         let changes = try await status()
 
         var blobs: [Blob] = []
@@ -287,7 +293,7 @@ public actor Repo {
                 blobs.append(.init(path: path))
                 continue
             }
-            let data = try await local.get(path: path)
+            let data = try await remoteLocal.get(path: path)
             let hash = try await objects.store(blob: data, privateKey: privateKey)
             blobs.append(.init(path: path, hash: hash))
         }
@@ -314,7 +320,7 @@ public actor Repo {
         let commitHash = try await objects.store(commit: commit, privateKey: privateKey)
 
         // Update HEAD, log commit
-        try await writeHEAD(hash: commitHash, remote: local)
+        try await writeHEAD(hash: commitHash, remote: remoteLocal)
         try await log(commit: commit, hash: commitHash)
 
         await postStatusNotification("Committed '\(message)'")
@@ -326,8 +332,8 @@ public actor Repo {
     public func rebase(_ remote: Remote) async throws -> String {
         try await fetch(remote)
 
-        let head = await readHEAD(remote: local)
-        let remoteHeadData = try await read("\(Self.defaultPath)/remotes/origin/HEAD")
+        let head = await readHEAD(remote: remoteLocal)
+        let remoteHeadData = try await read("\(repoPath)/remotes/origin/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
 
         guard let head, let remoteHead else {
@@ -350,8 +356,8 @@ public actor Repo {
             await postStatusNotification("Nothing to rebase — no unique commits")
 
             // Update logs
-            let remoteLogs = try await read("\(Self.defaultPath)/remotes/origin/logs")
-            try await write(remoteLogs, path: Self.defaultLogsPath)
+            let remoteLogs = try await read("\(repoPath)/remotes/origin/logs")
+            try await write(remoteLogs, path: logsPath)
 
             // Checkout and make the remote head the current HEAD
             try await checkout(remoteHead, remote: remote)
@@ -412,7 +418,7 @@ public actor Repo {
         guard let finalHead = rebasedCommits.last else {
             throw Error.missingHEAD
         }
-        try await writeHEAD(hash: finalHead, remote: local)
+        try await writeHEAD(hash: finalHead, remote: remoteLocal)
 
         // Checkout and update final HEAD
         try await checkout(finalHead, remote: remote)
@@ -423,7 +429,7 @@ public actor Repo {
     /// Checkouts a commit by changing the HEAD to the given commit and rebuilding the working directory.
     public func checkout(_ commitHash: String, remote: Remote) async throws {
         try await updateWorkingDirectory(to: commitHash, remote: remote)
-        try await writeHEAD(hash: commitHash, remote: local)
+        try await writeHEAD(hash: commitHash, remote: remoteLocal)
         await postStatusNotification("Checked out commit (\(commitHash.prefix(7)))")
     }
 
@@ -431,7 +437,7 @@ public actor Repo {
 
     /// Update remote along with associated objects.
     public func push(_ remote: Remote) async throws {
-        guard let head = await readHEAD(remote: local) else {
+        guard let head = await readHEAD(remote: remoteLocal) else {
             await postStatusNotification("Nothing to push — missing local HEAD")
             return
         }
@@ -439,7 +445,7 @@ public actor Repo {
         // Get remote HEAD and all reachable hashes from local storage, compare with reachable hashes from remote
         // storage and determine what needs to be pushed.
 
-        let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
+        let remoteObjects = Objects(remote: remote, objectsPath: objectsPath)
         let remoteHead = await readHEAD(remote: remote) ?? ""
 
         let remoteReachable = (!remoteHead.isEmpty) ? try await remoteObjects.retrieveCommitKeys(remoteHead) : []
@@ -508,12 +514,7 @@ public actor Repo {
         }
 
         // Upload current HEAD, logs and config to remote
-        for path in [
-            Self.defaultConfigPath,
-            Self.defaultSecretsPath,
-            Self.defaultLogsPath,
-            Self.defaultHeadPath,
-        ] {
+        for path in [configPath, secretsPath, logsPath, headPath] {
             if let data = try? await read(path) {
                 try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
             }
@@ -532,22 +533,22 @@ public actor Repo {
     /// Download objects from another repository.
     public func fetch(_ remote: Remote) async throws {
         // Copy remote config
-        if let remoteConfig = try? await remote.get(path: Self.defaultConfigPath) {
-            try await write(remoteConfig, path: Self.defaultConfigPath)
+        if let remoteConfig = try? await remote.get(path: configPath) {
+            try await write(remoteConfig, path: configPath)
         }
 
         // Download remote head
         let remoteHead = await readHEAD(remote: remote) ?? ""
-        try await write(remoteHead, path: "\(Self.defaultPath)/remotes/origin/HEAD")
+        try await write(remoteHead, path: "\(repoPath)/remotes/origin/HEAD")
 
         // Local head
-        let head = await readHEAD(remote: local)
+        let head = await readHEAD(remote: remoteLocal)
 
         // Compare heads
         guard !remoteHead.isEmpty, head != remoteHead else { return }
 
         // Download remote objects
-        let remoteObjects = Objects(remote: remote, objectsPath: Self.defaultObjectsPath)
+        let remoteObjects = Objects(remote: remote, objectsPath: objectsPath)
         let remoteKeys = try await remoteObjects.retrieveCommitKeys(remoteHead)
         for key in remoteKeys {
             guard try await !objects.exists(key: key) else {
@@ -559,15 +560,15 @@ public actor Repo {
         }
 
         // Download remote logs
-        if let remoteLogs = try? await remote.get(path: Self.defaultLogsPath) {
-            try await write(remoteLogs, path: "\(Self.defaultPath)/remotes/origin/logs")
+        if let remoteLogs = try? await remote.get(path: logsPath) {
+            try await write(remoteLogs, path: "\(repoPath)/remotes/origin/logs")
         }
     }
 
     // MARK: HEAD
 
     public func readHEAD(remote: Remote) async -> String? {
-        guard let data = try? await remote.get(path: Self.defaultHeadPath) else {
+        guard let data = try? await remote.get(path: headPath) else {
             return nil
         }
         guard let mime = try? MIMEDecoder().decode(data) else {
@@ -578,17 +579,12 @@ public actor Repo {
     }
 
     private func writeHEAD(hash: String, remote: Remote) async throws {
-        try await remote.put(
-            path: Self.defaultHeadPath,
-            data: """
-                Date: \(Date.now.toRFC1123)
-                Content-Type: text/plain 
-                
-                \(hash.trimmingCharacters(in: .whitespacesAndNewlines))
-                """.data(using: .utf8),
-            directoryHint: .notDirectory,
-            privateKey: privateKey
-        )
+        let content = MIMEMessage(headers: [
+            .Date: Date.now.toRFC1123,
+            .ContentType: "text/plain",
+        ], body: hash.trimmingCharacters(in: .whitespacesAndNewlines))
+        let data = MIMEEncoder().encode(content)
+        try await remote.put(path: headPath, data: data, directoryHint: .notDirectory, privateKey: privateKey)
     }
 }
 
@@ -599,7 +595,7 @@ extension Repo {
     func retrieveHash(ref: Ref) async throws -> String {
         switch ref {
         case .head:
-            guard let hash = await readHEAD(remote: local) else {
+            guard let hash = await readHEAD(remote: remoteLocal) else {
                 throw Error.missingHash
             }
             return hash
@@ -610,13 +606,13 @@ extension Repo {
 
     /// Returns a dictionary of file references for files in the working directory keyed with their path.
     func retrieveCurrentBlobReferences(at path: String = "") async throws -> [String: Blob] {
-        let paths = try await local.list(path: path, depth: 0)
+        let paths = try await remoteLocal.list(path: path, depth: 0)
         var out: [String: Blob] = [:]
         for relativePath in paths {
             if shouldIgnore(path: relativePath) {
                 continue
             }
-            let url = localURL.appending(path: relativePath)
+            let url = baseURL.appending(path: relativePath)
             if let hash = try? await objects.hash(for: url) {
                 out[relativePath] = .init(path: relativePath, hash: hash)
             }
@@ -627,13 +623,13 @@ extension Repo {
     /// Encodes a Commit log message and appends it to the logs file.
     func log(commit: Commit, hash: String) async throws {
         let line = LogEncoder().encode(commit: commit, hash: hash) + "\n"
-        try await log(path: Self.defaultLogsPath, append: line)
+        try await log(path: logsPath, append: line)
     }
 
     /// Appends line to given log file.
     func log(path: String, append line: String) async throws {
         guard let lineData = line.data(using: .utf8) else { return }
-        let logsData = try await read(Self.defaultLogsPath)
+        let logsData = try await read(logsPath)
         try await write(logsData+lineData, path: path)
     }
 
@@ -712,7 +708,7 @@ extension Repo {
         }
 
         var entries: [Tree.Entry] = []
-        let directoryURL = directory.isEmpty ? localURL : (localURL/directory)
+        let directoryURL = directory.isEmpty ? baseURL : (baseURL/directory)
         let contents = try FileManager.default.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey],
@@ -769,7 +765,7 @@ extension Repo {
                 try await buildWorkingDirectoryRecursively(entry.hash, path: path, remote: remote)
             case .normal:
                 let data = try await retrieveBlob(entry.hash, remote: remote)
-                let fileURL = localURL/path/entry.name
+                let fileURL = baseURL/path/entry.name
                 try FileManager.default.makeIntermediateDirectories(fileURL)
                 try data.write(to: fileURL)
             }
@@ -896,10 +892,10 @@ extension Repo {
     // Update working directory to match a specific commit
     private func updateWorkingDirectory(to commitHash: String, remote: Remote) async throws {
 
-        // Clear current working directory (except .wild)
-        for item in try FileManager.default.contentsOfDirectory(at: localURL, includingPropertiesForKeys: nil) {
-            let relativePath = item.standardizedFileURL.path.replacingOccurrences(of: localURL.path + "/", with: "")
-            if relativePath != Self.defaultPath {
+        // Clear current working directory (except the repo path)
+        for item in try FileManager.default.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: nil) {
+            let relativePath = item.standardizedFileURL.path.replacingOccurrences(of: baseURL.path + "/", with: "")
+            if relativePath != repoPath {
                 try FileManager.default.removeItem(at: item)
             }
         }

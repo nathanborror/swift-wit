@@ -15,9 +15,9 @@ Requirements:
 
 Config file maintains stable information about a user and their remotes:
 
-    [core]
-        version = 0.1
-        publicKey = PUBLIC_KEY_STRING
+    version = 0.1
+    publicKey = PUBLIC_KEY_STRING
+    address = nathan@nathan.run
     [user]
         id = USER_ID
         name = Nathan Borror
@@ -29,8 +29,9 @@ Common directory structure is similar to Git. The objects folder is designed to 
 
     ~/
     └ <WORKING_DIR>/
-      └ .wild/
+      └ .wit/
         ├ config
+        ├ secrets
         ├ HEAD
         ├ logs
         ├ objects/
@@ -38,10 +39,6 @@ Common directory structure is similar to Git. The objects folder is designed to 
           ├ trees/
           ├ blobs/
           └ binaries/
-        └ remotes/
-          └ origin/
-            ├ HEAD
-            └ logs
 
 Example Commit:
 

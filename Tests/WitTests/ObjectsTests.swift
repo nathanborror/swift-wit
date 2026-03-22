@@ -12,7 +12,7 @@ final class ObjectsTests {
     init() async throws {
         self.baseURL = .documentsDirectory/UUID().uuidString
         self.remote = RemoteDisk(baseURL: baseURL)
-        self.storage = Objects(remote: remote, objectsPath: ".wild/objects")
+        self.storage = Objects(remote: remote, objectsPath: ".wit/objects")
     }
 
     deinit {
