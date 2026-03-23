@@ -208,13 +208,19 @@ final class RepoTests {
         // Only commits 1 and 3 touched foo.txt
         let fooLogs = try await repo.logs(path: "foo.txt")
         #expect(fooLogs.count == 2)
-        #expect(fooLogs[0].message == "Update foo")
-        #expect(fooLogs[1].message == "Add foo")
+        if case .commit(let commit) = fooLogs[0] {
+            #expect(commit.message == "Update foo")
+        }
+        if case .commit(let commit) = fooLogs[1] {
+            #expect(commit.message == "Add foo")
+        }
 
         // Only commit 2 touched bar.txt
         let barLogs = try await repo.logs(path: "bar.txt")
         #expect(barLogs.count == 1)
-        #expect(barLogs[0].message == "Add bar")
+        if case .commit(let commit) = barLogs[0] {
+            #expect(commit.message == "Add bar")
+        }
     }
 
     @Test("Logs filtered by nested path")
@@ -230,12 +236,18 @@ final class RepoTests {
 
         let notesLogs = try await repo.logs(path: "Documents/notes.txt")
         #expect(notesLogs.count == 2)
-        #expect(notesLogs[0].message == "Update notes")
-        #expect(notesLogs[1].message == "Add notes")
+        if case .commit(let commit) = notesLogs[0] {
+            #expect(commit.message == "Update notes")
+        }
+        if case .commit(let commit) = notesLogs[1] {
+            #expect(commit.message == "Add notes")
+        }
 
         let readmeLogs = try await repo.logs(path: "README.md")
         #expect(readmeLogs.count == 1)
-        #expect(readmeLogs[0].message == "Add readme")
+        if case .commit(let commit) = readmeLogs[0] {
+            #expect(commit.message == "Add readme")
+        }
     }
 
     @Test("Logs for deleted file")
@@ -251,8 +263,12 @@ final class RepoTests {
 
         let tempLogs = try await repo.logs(path: "temp.txt")
         #expect(tempLogs.count == 2)
-        #expect(tempLogs[0].message == "Delete temp")
-        #expect(tempLogs[1].message == "Add temp")
+        if case .commit(let commit) = tempLogs[0] {
+            #expect(commit.message == "Delete temp")
+        }
+        if case .commit(let commit) = tempLogs[1] {
+            #expect(commit.message == "Add temp")
+        }
     }
 
     @Test("Logs for nonexistent path")

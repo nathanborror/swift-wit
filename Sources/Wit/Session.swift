@@ -295,12 +295,7 @@ public actor RepoSession {
             }
 
             if blobHash != parentBlobHash {
-                results.append(Log(
-                    timestamp: commit.timestamp,
-                    hash: hash,
-                    parent: commit.parent,
-                    message: commit.message
-                ))
+                results.append(.blobChange(.init(timestamp: commit.timestamp, hash: blobHash ?? "", commit: hash, message: commit.message)))
             }
 
             commitHash = commit.parent
