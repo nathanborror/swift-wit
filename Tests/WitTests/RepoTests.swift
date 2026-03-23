@@ -186,6 +186,87 @@ final class RepoTests {
         #expect(changes["Documents/bar.txt"] == .added)
     }
 
+    @Test("Logs filtered by path")
+    func logsWithPath() async throws {
+        let (path, repo) = NewRepo()
+        defer { RemoveDirectory(path) }
+
+        try await repo.initialize()
+
+        // Commit 1: add foo.txt
+        try await CommitFile(repo, path: "foo.txt", content: "foo v1", message: "Add foo")
+
+        // Commit 2: add bar.txt (foo unchanged)
+        try await CommitFile(repo, path: "bar.txt", content: "bar v1", message: "Add bar")
+
+        // Commit 3: modify foo.txt
+        try await CommitFile(repo, path: "foo.txt", content: "foo v2", message: "Update foo")
+
+        let allLogs = try await repo.logs()
+        #expect(allLogs.count == 3)
+
+        // Only commits 1 and 3 touched foo.txt
+        let fooLogs = try await repo.logs(path: "foo.txt")
+        #expect(fooLogs.count == 2)
+        #expect(fooLogs[0].message == "Update foo")
+        #expect(fooLogs[1].message == "Add foo")
+
+        // Only commit 2 touched bar.txt
+        let barLogs = try await repo.logs(path: "bar.txt")
+        #expect(barLogs.count == 1)
+        #expect(barLogs[0].message == "Add bar")
+    }
+
+    @Test("Logs filtered by nested path")
+    func logsWithNestedPath() async throws {
+        let (path, repo) = NewRepo()
+        defer { RemoveDirectory(path) }
+
+        try await repo.initialize()
+
+        try await CommitFile(repo, path: "Documents/notes.txt", content: "v1", message: "Add notes")
+        try await CommitFile(repo, path: "README.md", content: "hello", message: "Add readme")
+        try await CommitFile(repo, path: "Documents/notes.txt", content: "v2", message: "Update notes")
+
+        let notesLogs = try await repo.logs(path: "Documents/notes.txt")
+        #expect(notesLogs.count == 2)
+        #expect(notesLogs[0].message == "Update notes")
+        #expect(notesLogs[1].message == "Add notes")
+
+        let readmeLogs = try await repo.logs(path: "README.md")
+        #expect(readmeLogs.count == 1)
+        #expect(readmeLogs[0].message == "Add readme")
+    }
+
+    @Test("Logs for deleted file")
+    func logsWithDeletedFile() async throws {
+        let (path, repo) = NewRepo()
+        defer { RemoveDirectory(path) }
+
+        try await repo.initialize()
+
+        try await CommitFile(repo, path: "temp.txt", content: "temporary", message: "Add temp")
+        try await repo.delete("temp.txt")
+        let _ = try await repo.commit("Delete temp")
+
+        let tempLogs = try await repo.logs(path: "temp.txt")
+        #expect(tempLogs.count == 2)
+        #expect(tempLogs[0].message == "Delete temp")
+        #expect(tempLogs[1].message == "Add temp")
+    }
+
+    @Test("Logs for nonexistent path")
+    func logsWithNonexistentPath() async throws {
+        let (path, repo) = NewRepo()
+        defer { RemoveDirectory(path) }
+
+        try await repo.initialize()
+        try await CommitFile(repo, path: "foo.txt", content: "hello", message: "Add foo")
+
+        let logs = try await repo.logs(path: "does/not/exist.txt")
+        #expect(logs.isEmpty)
+    }
+
     @Test("Tree optimization")
     func treeOptimizationTest() async throws {
         let (path, repo) = NewRepo()

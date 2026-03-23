@@ -277,6 +277,38 @@ public actor RepoSession {
         return try LogDecoder().decode(mime.body)
     }
 
+    /// Returns logs filtered to commits that changed the file at the given path.
+    public func logs(path: String) async throws -> [Log] {
+        let head = try await retrieveHash(ref: .head)
+        var commitHash: String? = head
+        var results: [Log] = []
+
+        while let hash = commitHash {
+            let commit = try await objects.retrieve(commit: hash)
+            let blobHash = try await objects.resolvePath(in: commit.tree, path: path)
+
+            // Resolve the same path in the parent commit (nil if no parent)
+            var parentBlobHash: String? = nil
+            if let parentHash = commit.parent {
+                let parentCommit = try await objects.retrieve(commit: parentHash)
+                parentBlobHash = try await objects.resolvePath(in: parentCommit.tree, path: path)
+            }
+
+            if blobHash != parentBlobHash {
+                results.append(Log(
+                    timestamp: commit.timestamp,
+                    hash: hash,
+                    parent: commit.parent,
+                    message: commit.message
+                ))
+            }
+
+            commitHash = commit.parent
+        }
+
+        return results
+    }
+
     // MARK: Grow and tweak common history
 
     /// Record changes to the repository.

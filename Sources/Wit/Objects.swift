@@ -178,6 +178,30 @@ public actor Objects {
         return seen
     }
 
+    // MARK: Path resolution
+
+    /// Resolves a file path within a tree, returning the blob hash if found.
+    /// The path should use forward slashes (e.g. "Sources/Wit/Session.swift").
+    public func resolvePath(in treeHash: String, path: String) async throws -> String? {
+        let components = path.split(separator: "/").map(String.init)
+        guard !components.isEmpty else { return nil }
+
+        var currentTree = try await retrieve(tree: treeHash)
+
+        for (index, component) in components.enumerated() {
+            let isLast = index == components.count - 1
+            guard let entry = currentTree.entries.first(where: { $0.name == component }) else {
+                return nil
+            }
+            if isLast {
+                return entry.mode == .normal ? entry.hash : nil
+            }
+            guard entry.mode == .directory else { return nil }
+            currentTree = try await retrieve(tree: entry.hash)
+        }
+        return nil
+    }
+
     // MARK: Existance
 
     public func exists(key: Key) async throws -> Bool {
