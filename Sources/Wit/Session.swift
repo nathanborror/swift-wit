@@ -65,12 +65,14 @@ public actor RepoSession {
         try await objects.retrieve(tree: hash)
     }
 
-    public func blob(hash: String, remote: Remote) async throws -> Data {
-        try await retrieveBlob(hash, remote: remote)
+    public func blob(hash: String, remote: Remote? = nil) async throws -> Data {
+        let remote = remote ?? remoteLocal
+        return try await retrieveBlob(hash, remote: remote)
     }
 
-    public func binary(hash: String, remote: Remote) async throws -> Data {
-        try await retrieveBinary(hash, remote: remote)
+    public func binary(hash: String, remote: Remote? = nil) async throws -> Data {
+        let remote = remote ?? remoteLocal
+        return try await retrieveBinary(hash, remote: remote)
     }
 
     // MARK: Working with files
