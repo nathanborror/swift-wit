@@ -117,28 +117,25 @@ final class RemoteTests {
         let filePath = "photo.jpg"
 
         // Write binary — should only store locally, not on remote
-        try await clientA.writeBinary(binaryData, path: filePath)
-
-        // Read the alias file to get the binary hash
-        let aliasData = try await clientA.read("\(filePath).alias")
-        let aliasContent = String(data: aliasData, encoding: .utf8)!
-        let range = aliasContent.range(of: "Alias-Hash: ")!
-        let binaryHash = String(aliasContent[range.upperBound...].prefix(while: { !$0.isWhitespace }))
+        let hash = try await clientA.writeBinary(binaryData, path: filePath)
 
         // Verify the binary does NOT exist on the remote yet
         let remoteObjects = Objects(remote: remote, objectsPath: await clientA.objectsPath)
-        let existsBefore = try await remoteObjects.exists(key: .init(hash: binaryHash, kind: .binary))
+        let existsBefore = try await remoteObjects.exists(key: .init(hash: hash, kind: .binary))
         #expect(existsBefore == false)
 
-        // Commit (this commits the alias file as a blob) and push
+        // Commit
         try await clientA.commit("Add binary")
         try await clientA.push(remote)
 
+        // Manually push binaries to remote
+        try await clientA.push(binaries: [hash], remote: remote)
+
         // Verify the binary now exists on the remote with correct content
-        let existsAfter = try await remoteObjects.exists(key: .init(hash: binaryHash, kind: .binary))
+        let existsAfter = try await remoteObjects.exists(key: .init(hash: hash, kind: .binary))
         #expect(existsAfter == true)
 
-        let remoteBinary = try await remoteObjects.retrieve(binary: binaryHash)
+        let remoteBinary = try await remoteObjects.retrieve(binary: hash)
         #expect(remoteBinary == binaryData)
     }
 

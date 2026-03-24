@@ -93,21 +93,13 @@ public actor RepoSession {
         try await remoteLocal.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func writeBinary(_ data: Data, path: String) async throws {
+    /// Writes binary data to the object store. The object has retains its file extension, helps browsers detect its MIME type. Returns the object hash.
+    @discardableResult
+    public func writeBinary(_ data: Data, path: String) async throws -> String {
         guard let ext = path.split(separator: ".").last.map(String.init) else {
             throw Error.missingExtension
         }
-        let hash = try await objects.store(binary: data, ext: ext, privateKey: privateKey)
-
-        // TODO: Make caller provide this
-        // Instead of hard-coding this content the caller should provide what alias headers look like.
-        let content = MIMEMessage(headers: [
-            .Date: Date.now.toRFC1123,
-            .ContentType: "application/x-wild-alias",
-            "Alias-Hash": hash,
-        ])
-        let data = MIMEEncoder().encode(content)
-        try await remoteLocal.put(path: "\(path).alias", data: data, directoryHint: .notDirectory, privateKey: privateKey)
+        return try await objects.store(binary: data, ext: ext, privateKey: privateKey)
     }
 
     /// Deletes file from working directory.
@@ -502,46 +494,6 @@ public actor RepoSession {
             }
         }
 
-        // Find binary objects referenced by alias files and push them.
-        // Alias files are committed as regular blobs but contain an Alias-Hash
-        // header pointing to the actual binary in the content-addressable store.
-        // Errors are logged but they don't halt the push process.
-        do {
-            let treeKeys = localReachable.filter { $0.kind == .tree }
-            var binaryHashesToPush = Set<String>()
-            for key in treeKeys {
-                let tree = try await objects.retrieve(tree: key.hash)
-                for entry in tree.entries where entry.mode == .normal && entry.name.hasSuffix(".alias") {
-                    do {
-                        let blobData = try await objects.retrieve(blob: entry.hash)
-                        if let content = String(data: blobData, encoding: .utf8),
-                           let range = content.range(of: "Alias-Hash: ") {
-                            let rest = content[range.upperBound...]
-                            let hash = rest.prefix(while: { !$0.isWhitespace })
-                            if !hash.isEmpty {
-                                binaryHashesToPush.insert(String(hash))
-                            }
-                        }
-                    } catch {
-                        print("Push Error: Failed to retrieve blob to push: \(error)")
-                    }
-                }
-            }
-            for binaryHash in binaryHashesToPush {
-                do {
-                    let key = Objects.Key(hash: binaryHash, kind: .binary)
-                    if try await remoteObjects.exists(key: key) { continue }
-                    guard let ext = binaryHash.split(separator: ".").last.map(String.init) else { continue }
-                    let binary = try await objects.retrieve(binary: binaryHash)
-                    let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
-                } catch {
-                    print("Push Error: Failed to store binary: \(error)")
-                }
-            }
-        } catch {
-            print("Push Error: Failed to push binaries: \(error)")
-        }
-
         // Upload current HEAD, logs and config to remote
         for path in [configPath, secretsPath, logsPath, headPath] {
             if let data = try? await read(path) {
@@ -552,6 +504,22 @@ public actor RepoSession {
         // Finished
         let remoteURLString = await remote.baseURL.absoluteString
         await postStatusNotification("Pushed \(keysToPush.count) objects to '\(remoteURLString)'")
+    }
+
+    /// Push specific binaries to the remote. If the binary already exists on the remote it's skipped.
+    public func push(binaries hashes: [String], remote: Remote) async throws {
+        let remoteObjects = Objects(remote: remote, objectsPath: objectsPath)
+        for hash in hashes {
+            let key = Objects.Key(hash: hash, kind: .binary)
+            if try await remoteObjects.exists(key: key) { continue }
+            guard let ext = hash.split(separator: ".").last.map(String.init) else { continue }
+            let binary = try await objects.retrieve(binary: hash)
+            let _ = try await remoteObjects.store(binary: binary, ext: ext, privateKey: privateKey)
+        }
+
+        // Finished
+        let remoteURLString = await remote.baseURL.absoluteString
+        await postStatusNotification("Pushed \(hashes.count) binaries to '\(remoteURLString)'")
     }
 
     /// Fetch from and integrate with another repository.
