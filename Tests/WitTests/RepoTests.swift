@@ -121,6 +121,7 @@ final class RepoTests {
         defer { RemoveDirectory(path) }
 
         try await repo.initialize()
+
         try await repo.write("", path: ".DS_Store") // Should be ignored
         try await repo.write("", path: "Documents/foo.txt")
         let commit1_Hash = try await repo.commit("Initial commit")
@@ -159,6 +160,7 @@ final class RepoTests {
         defer { RemoveDirectory(path) }
 
         try await repo.initialize()
+
         try await repo.write("Some text", path: "Documents/foo.txt")
         let commit1_Hash = try await repo.commit("Initial commit")
         #expect(commit1_Hash.isEmpty == false)
@@ -175,15 +177,34 @@ final class RepoTests {
         let (path, repo) = NewRepo()
         defer { RemoveDirectory(path) }
 
+        try await repo.initialize()
+
         try await repo.write("This is some foo", path: "foo.txt")
         try await repo.write("This is some bar", path: "Documents/bar.txt")
+        try await repo.commit("Initial commit")
 
-        let references = try await repo.retrieveCurrentBlobReferences()
-        #expect(references.count == 2)
+        let referencesA = try await repo.retrieveCurrentBlobReferences()
+        #expect(referencesA.count == 2)
+
+        try await repo.write("This is some changed foo", path: "foo.txt")
+        try await repo.delete("Documents/bar.txt")
+
+        let referencesB = try await repo.retrieveCurrentBlobReferences()
+        #expect(referencesB.count == 1)
 
         let changes = try await repo.status()
-        #expect(changes["foo.txt"] == .added)
-        #expect(changes["Documents/bar.txt"] == .added)
+        #expect(changes.count == 2)
+
+        for change in changes {
+            switch change.kind {
+            case .added:
+                #expect(change.hash == nil)
+            case .modified:
+                #expect(change.hash != nil)
+            case .deleted:
+                #expect(change.hash != nil)
+            }
+        }
     }
 
     @Test("Logs filtered by path")

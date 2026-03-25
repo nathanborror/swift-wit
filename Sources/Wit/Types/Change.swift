@@ -1,7 +1,13 @@
 import Foundation
 
-public enum Change: Sendable {
-    case added
-    case modified
-    case deleted
+public struct Change: Sendable {
+    public let path: String
+    public let hash: String?
+    public let kind: Kind
+
+    public enum Kind: Sendable {
+        case added
+        case modified
+        case deleted
+    }
 }

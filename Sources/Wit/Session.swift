@@ -229,7 +229,7 @@ public actor RepoSession {
     // MARK: Examine history and state
 
     /// Show the working tree status.
-    public func status(_ ref: Ref = .head) async throws -> [String: Change] {
+    public func status(_ ref: Ref = .head) async throws -> [Change] {
         let commitHash = try? await retrieveHash(ref: ref)
 
         // Gather file references within the commit
@@ -246,20 +246,20 @@ public actor RepoSession {
         let blobReferencesCurrent = try await retrieveCurrentBlobReferences()
 
         // Compare commit references with current files and find additions and modifications
-        var out: [String: Change] = [:]
+        var out: [Change] = []
         for (path, file) in blobReferencesCurrent {
             if let previousRef = blobReferences[path] {
                 if previousRef.hash != file.hash {
-                    out[file.path] = .modified
+                    out.append(.init(path: file.path, hash: file.hash, kind: .modified))
                 }
             } else {
-                out[file.path] = .added
+                out.append(.init(path: file.path, hash: file.hash, kind: .added))
             }
         }
 
         // Find deletions
         for (path, file) in blobReferences where blobReferencesCurrent[path] == nil {
-            out[file.path] = .deleted
+            out.append(.init(path: file.path, hash: file.hash, kind: .deleted))
         }
         return out
     }
@@ -309,14 +309,14 @@ public actor RepoSession {
         var blobs: [Blob] = []
 
         // Store blobs, generate hashes and update the file references before building new tree structure
-        for (path, change) in changes {
-            guard change != .deleted else {
-                blobs.append(.init(path: path))
+        for change in changes {
+            guard change.kind != .deleted else {
+                blobs.append(.init(path: change.path))
                 continue
             }
-            let data = try await remoteLocal.get(path: path)
+            let data = try await remoteLocal.get(path: change.path)
             let hash = try await objects.store(blob: data, privateKey: privateKey)
-            blobs.append(.init(path: path, hash: hash))
+            blobs.append(.init(path: change.path, hash: hash))
         }
 
         let parentCommit: Commit?
