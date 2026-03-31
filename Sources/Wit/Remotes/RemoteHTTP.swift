@@ -174,8 +174,8 @@ public actor RemoteHTTP: Remote {
 
         let signatureBase64 = Data(signature).base64EncodedString()
 
-        request.setValue(signatureBase64, forHTTPHeaderField: "X-Wild-Signature")
-        request.setValue(timestamp, forHTTPHeaderField: "X-Wild-Timestamp")
+        request.setValue(signatureBase64, forHTTPHeaderField: "X-Auth-Signature")
+        request.setValue(timestamp, forHTTPHeaderField: "X-Auth-Timestamp")
         return request
     }
 }
