@@ -13,11 +13,6 @@ public actor RemoteDisk: Remote {
         self.cache = [:]
     }
 
-    public func exists(path: String) async throws -> Bool {
-        let url = baseURL/path
-        return FileManager.default.fileExists(atPath: url.path)
-    }
-
     public func get(path: String) async throws -> Data {
         if let cached = cache[path] {
             return cached
@@ -50,12 +45,9 @@ public actor RemoteDisk: Remote {
         cache.removeValue(forKey: path)
     }
 
-    public func move(path: String, to toPath: String) async throws {
-        let atURL = baseURL/path
-        let toURL = baseURL/toPath
-        guard atURL != toURL else { return }
-        try FileManager.default.makeIntermediateDirectories(toURL)
-        try FileManager.default.moveItem(at: atURL, to: toURL)
+    public func exists(path: String) async throws -> Bool {
+        let url = baseURL/path
+        return FileManager.default.fileExists(atPath: url.path)
     }
 
     public func list(path: String, depth: Int? = nil) async throws -> [String] {
@@ -79,5 +71,17 @@ public actor RemoteDisk: Remote {
             }
             return out
         }.value
+    }
+
+    public func move(path: String, to toPath: String) async throws {
+        let atURL = baseURL/path
+        let toURL = baseURL/toPath
+        guard atURL != toURL else { return }
+        try FileManager.default.makeIntermediateDirectories(toURL)
+        try FileManager.default.moveItem(at: atURL, to: toURL)
+    }
+
+    public func sign(request: URLRequest, data: Data?, privateKey: PrivateKey) throws -> URLRequest {
+        return request
     }
 }

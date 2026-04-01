@@ -9,7 +9,9 @@ let isServerRunning = true
 final class RemoteTests {
     let privateKey: Remote.PrivateKey
     let identity: String
+
     let remote: Remote
+    let remoteBin: Remote
 
     let clientA_workingFolder: String
     let clientA: RepoSession
@@ -40,11 +42,12 @@ final class RemoteTests {
         try await clientA.write(config, path: clientA.configPath)
 
         self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/home/\(identity)")!)
+        self.remoteBin = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/bin/\(identity)")!)
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
         let configData = try await clientA.read(clientA.configPath)
-        try await registerRemote.put(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
+        try await registerRemote.post(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
 
         self.clientB = RepoSession(baseURL: clientB_baseURL, privateKey: privateKey)
         try await self.clientB.initialize()
@@ -55,9 +58,6 @@ final class RemoteTests {
     func teardown() {
         try? FileManager.default.removeItem(at: .documentsDirectory/clientA_workingFolder)
         try? FileManager.default.removeItem(at: .documentsDirectory/clientB_workingFolder)
-        let privateKey = privateKey
-        let remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/\(identity)")!)
-        Task { try await remote.delete(path: "unregister", privateKey: privateKey) }
     }
 
     @Test("Push")
@@ -76,6 +76,8 @@ final class RemoteTests {
 
         let logCheck2 = try await clientA.logs()
         #expect(logCheck2.count == 2)
+
+        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("Rebase")
@@ -109,6 +111,8 @@ final class RemoteTests {
         try await clientB.rebase(remote)
         let logs = try await clientB.logs()
         #expect(logs.count == 4)
+
+        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("Push binaries")
@@ -137,6 +141,8 @@ final class RemoteTests {
 
         let remoteBinary = try await remoteObjects.retrieve(binary: hash)
         #expect(remoteBinary == binaryData)
+
+        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("Complex push")
@@ -154,6 +160,8 @@ final class RemoteTests {
         try await clientA.writeBinary(Data("fake image data".utf8), path: "photo.jpg")
         try await clientA.commit("Third commit")
         try await clientA.push(remote)
+
+        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("List")
@@ -169,5 +177,7 @@ final class RemoteTests {
         for item in items {
             #expect(item.hasPrefix(parent))
         }
+
+        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 }

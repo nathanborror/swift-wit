@@ -44,29 +44,6 @@ public actor RemoteS3: Remote {
         self.session = URLSession(configuration: configuration)
     }
 
-    public func exists(path: String) async throws -> Bool {
-        var request = URLRequest(url: baseURL/path)
-        request.httpMethod = "HEAD"
-        request.timeoutInterval = 15
-
-        let (body, resp) = try await session.data(for: request)
-        guard let httpResponse = resp as? HTTPURLResponse else {
-            throw RemoteError.badServerResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            logger.info("HEAD (\(request.url?.path ?? ""))")
-            return true
-        case 404:
-            logger.info("HEAD (\(request.url?.path ?? "")): Not Found")
-            return false
-        default:
-            logger.error("HEAD Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8)!)")
-            throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))
-        }
-    }
-
     public func get(path: String) async throws -> Data {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "GET"
@@ -95,36 +72,6 @@ public actor RemoteS3: Remote {
         try await upload("POST", path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    private func upload(_ method: String, path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
-
-        // Amazon doesn't have a concept of directories (yet)
-        guard directoryHint != .isDirectory else {
-            return
-        }
-        var request = URLRequest(url: baseURL/path)
-        request.httpMethod = method
-
-        let data = data ?? Data()
-
-        if let privateKey {
-            request = try sign(request: request, data: data, privateKey: privateKey)
-        }
-
-        let (body, resp) = try await session.upload(for: request, from: data)
-        guard let httpResponse = resp as? HTTPURLResponse else {
-            throw RemoteError.badServerResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            logger.info("\(method) (\(request.url?.path ?? "."))")
-            return
-        default:
-            logger.error("\(method) Error: (\(request.url?.path ?? "."), \(httpResponse.statusCode)) — \(request.url!.path) `\(String(data: body, encoding: .utf8) ?? "Unknown")`")
-            throw RemoteError.requestFailed(httpResponse.statusCode, request.url?.absoluteString)
-        }
-    }
-
     public func delete(path: String, privateKey: PrivateKey?) async throws {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "DELETE"
@@ -149,8 +96,27 @@ public actor RemoteS3: Remote {
         }
     }
 
-    public func move(path: String, to toPath: String) async throws {
-        logger.warning("RemoteS3.move not implemented")
+    public func exists(path: String) async throws -> Bool {
+        var request = URLRequest(url: baseURL/path)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 15
+
+        let (body, resp) = try await session.data(for: request)
+        guard let httpResponse = resp as? HTTPURLResponse else {
+            throw RemoteError.badServerResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            logger.info("HEAD (\(request.url?.path ?? ""))")
+            return true
+        case 404:
+            logger.info("HEAD (\(request.url?.path ?? "")): Not Found")
+            return false
+        default:
+            logger.error("HEAD Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8)!)")
+            throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))
+        }
     }
 
     public func list(path: String, depth: Int? = nil) async throws -> [String] {
@@ -196,7 +162,61 @@ public actor RemoteS3: Remote {
         }
     }
 
-    // MARK: - Private
+    public func move(path: String, to toPath: String) async throws {
+        logger.warning("RemoteS3.move not implemented")
+    }
+
+    public func sign(request: URLRequest, data: Data?, privateKey: PrivateKey) throws -> URLRequest {
+        guard let accessKey, let secretKey else {
+            throw RemoteError.unauthorized
+        }
+        guard let url = request.url else {
+            throw RemoteError.missingURL
+        }
+        let signature = AWSV4Signature(
+            accessKey: accessKey,
+            secretKey: secretKey,
+            regionName: region
+        )
+        return try signature.sign(
+            method: .init(rawValue: request.httpMethod ?? "PUT") ?? .put,
+            url: url,
+            data: data,
+            headers: request.allHTTPHeaderFields ?? [:]
+        )
+    }
+
+    // MARK: Private
+
+    private func upload(_ method: String, path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+
+        // Amazon doesn't have a concept of directories (yet)
+        guard directoryHint != .isDirectory else {
+            return
+        }
+        var request = URLRequest(url: baseURL/path)
+        request.httpMethod = method
+
+        let data = data ?? Data()
+
+        if let privateKey {
+            request = try sign(request: request, data: data, privateKey: privateKey)
+        }
+
+        let (body, resp) = try await session.upload(for: request, from: data)
+        guard let httpResponse = resp as? HTTPURLResponse else {
+            throw RemoteError.badServerResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            logger.info("\(method) (\(request.url?.path ?? "."))")
+            return
+        default:
+            logger.error("\(method) Error: (\(request.url?.path ?? "."), \(httpResponse.statusCode)) — \(request.url!.path) `\(String(data: body, encoding: .utf8) ?? "Unknown")`")
+            throw RemoteError.requestFailed(httpResponse.statusCode, request.url?.absoluteString)
+        }
+    }
 
     private func parseListResponse(data: Data, prefix: String) -> [String] {
         guard let xmlString = String(data: data, encoding: .utf8) else {
@@ -235,26 +255,6 @@ public actor RemoteS3: Remote {
             results.append(relativePath)
         }
         return results
-    }
-
-    private func sign(request: URLRequest, data: Data, privateKey: PrivateKey) throws -> URLRequest {
-        guard let accessKey, let secretKey else {
-            throw RemoteError.unauthorized
-        }
-        guard let url = request.url else {
-            throw RemoteError.missingURL
-        }
-        let signature = AWSV4Signature(
-            accessKey: accessKey,
-            secretKey: secretKey,
-            regionName: region
-        )
-        return try signature.sign(
-            method: .init(rawValue: request.httpMethod ?? "PUT") ?? .put,
-            url: url,
-            data: data,
-            headers: request.allHTTPHeaderFields ?? [:]
-        )
     }
 }
 

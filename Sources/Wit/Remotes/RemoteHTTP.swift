@@ -19,29 +19,6 @@ public actor RemoteHTTP: Remote {
         self.session = URLSession(configuration: configuration)
     }
 
-    public func exists(path: String) async throws -> Bool {
-        var request = URLRequest(url: baseURL/path)
-        request.httpMethod = "HEAD"
-        request.timeoutInterval = 15
-
-        let (body, resp) = try await session.data(for: request)
-        guard let httpResponse = resp as? HTTPURLResponse else {
-            throw RemoteError.badServerResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            logger.info("HEAD (\(request.url?.path ?? ""))")
-            return true
-        case 404:
-            logger.info("HEAD (\(request.url?.path ?? "")): Not Found")
-            return false
-        default:
-            logger.error("HEAD Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8)!)")
-            throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))
-        }
-    }
-
     public func get(path: String) async throws -> Data {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "GET"
@@ -70,37 +47,12 @@ public actor RemoteHTTP: Remote {
         try await upload("POST", path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    private func upload(_ method: String, path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
-        // Server doesn't have a concept of directories (yet)
-        guard let data, directoryHint != .isDirectory else { return }
-
-        var request = URLRequest(url: baseURL/path)
-        request.httpMethod = method
-        if let privateKey {
-            request = try sign(request: request, privateKey: privateKey)
-        }
-
-        let (body, resp) = try await session.upload(for: request, from: data)
-        guard let httpResponse = resp as? HTTPURLResponse else {
-            throw RemoteError.badServerResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200..<300:
-            logger.info("\(method) (\(request.url?.path ?? "."))")
-            return
-        default:
-            logger.error("\(method) Error: (\(request.url?.path ?? "."), \(httpResponse.statusCode)) — \(request.url!.path) `\(String(data: body, encoding: .utf8) ?? "Unknown")`")
-            throw RemoteError.requestFailed(httpResponse.statusCode, request.url?.absoluteString)
-        }
-    }
-
     public func delete(path: String, privateKey: PrivateKey?) async throws {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "DELETE"
         request.timeoutInterval = 15
         if let privateKey {
-            request = try sign(request: request, privateKey: privateKey)
+            request = try sign(request: request, data: nil, privateKey: privateKey)
         }
 
         let (body, resp) = try await session.data(for: request)
@@ -119,8 +71,27 @@ public actor RemoteHTTP: Remote {
         }
     }
 
-    public func move(path: String, to toPath: String) async throws {
-        logger.warning("RemoteHTTP.move not implemented")
+    public func exists(path: String) async throws -> Bool {
+        var request = URLRequest(url: baseURL/path)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 15
+
+        let (body, resp) = try await session.data(for: request)
+        guard let httpResponse = resp as? HTTPURLResponse else {
+            throw RemoteError.badServerResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            logger.info("HEAD (\(request.url?.path ?? ""))")
+            return true
+        case 404:
+            logger.info("HEAD (\(request.url?.path ?? "")): Not Found")
+            return false
+        default:
+            logger.error("HEAD Error (\(request.url?.path ?? ""), \(httpResponse.statusCode)): \(String(data: body, encoding: .utf8)!)")
+            throw RemoteError.requestFailed(httpResponse.statusCode, String(data: body, encoding: .utf8))
+        }
     }
 
     public func list(path: String, depth: Int?) async throws -> [String] {
@@ -156,9 +127,11 @@ public actor RemoteHTTP: Remote {
         }
     }
 
-    // MARK: - Private
-
-    private func sign(request: URLRequest, privateKey: PrivateKey) throws -> URLRequest {
+    public func move(path: String, to toPath: String) async throws {
+        logger.warning("RemoteHTTP.move not implemented")
+    }
+    
+    public func sign(request: URLRequest, data: Data?, privateKey: PrivateKey) throws -> URLRequest {
         var request = request
         guard let method = request.httpMethod else {
             throw RemoteError.missingURLMethod
@@ -177,5 +150,32 @@ public actor RemoteHTTP: Remote {
         request.setValue(signatureBase64, forHTTPHeaderField: "X-Auth-Signature")
         request.setValue(timestamp, forHTTPHeaderField: "X-Auth-Timestamp")
         return request
+    }
+
+    // MARK: Private
+
+    private func upload(_ method: String, path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+        // Server doesn't have a concept of directories (yet)
+        guard directoryHint != .isDirectory else { return }
+
+        var request = URLRequest(url: baseURL/path)
+        request.httpMethod = method
+        if let privateKey {
+            request = try sign(request: request, data: nil, privateKey: privateKey)
+        }
+
+        let (body, resp) = try await session.upload(for: request, from: data ?? Data())
+        guard let httpResponse = resp as? HTTPURLResponse else {
+            throw RemoteError.badServerResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200..<300:
+            logger.info("\(method) (\(request.url?.path ?? "."))")
+            return
+        default:
+            logger.error("\(method) Error: (\(request.url?.path ?? "."), \(httpResponse.statusCode)) — \(request.url!.path) `\(String(data: body, encoding: .utf8) ?? "Unknown")`")
+            throw RemoteError.requestFailed(httpResponse.statusCode, request.url?.absoluteString)
+        }
     }
 }
