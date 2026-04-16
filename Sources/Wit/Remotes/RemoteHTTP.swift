@@ -165,11 +165,16 @@ public actor RemoteHTTP: Remote {
             request = try sign(request: request, data: nil, privateKey: privateKey)
         }
 
-        let (body, resp) = try await session.upload(for: request, from: data ?? Data())
+        let body: Data
+        let resp: URLResponse
+        if let data {
+            (body, resp) = try await session.upload(for: request, from: data)
+        } else {
+            (body, resp) = try await session.data(for: request)
+        }
         guard let httpResponse = resp as? HTTPURLResponse else {
             throw RemoteError.badServerResponse
         }
-
         switch httpResponse.statusCode {
         case 200..<300:
             logger.info("\(method) (\(request.url?.path ?? "."))")
