@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import OSLog
 
 private let logger = Logger(subsystem: "RemoteHTTP", category: "Wit")

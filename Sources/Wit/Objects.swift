@@ -1,7 +1,7 @@
 import Foundation
-import OSLog
-import Compression
 import CryptoKit
+import Compression
+import OSLog
 
 private let logger = Logger(subsystem: "ObjectStore", category: "Wit")
 

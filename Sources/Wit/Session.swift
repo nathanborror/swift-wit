@@ -1,6 +1,6 @@
 import Foundation
-import OSLog
 import CryptoKit
+import OSLog
 import MIME
 
 private let logger = Logger(subsystem: "Repo", category: "Wit")
