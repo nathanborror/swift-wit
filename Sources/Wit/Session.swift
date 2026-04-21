@@ -627,7 +627,9 @@ extension RepoSession {
     func log(path: String, append line: String) async throws {
         guard let lineData = line.data(using: .utf8) else { return }
         let logsData = try await read(logsPath)
-        try await write(logsData+lineData, path: path)
+        let needsNewline = !logsData.isEmpty && logsData.last != UInt8(ascii: "\n")
+        let separator = needsNewline ? Data([UInt8(ascii: "\n")]) : Data()
+        try await write(logsData + separator + lineData, path: path)
     }
 
     // TODO: Review generated code
