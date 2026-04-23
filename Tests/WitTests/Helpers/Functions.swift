@@ -16,6 +16,6 @@ func RemoveDirectory(_ path: String) {
 
 @discardableResult
 func CommitFile(_ repo: RepoSession, path: String, content: String = UUID().uuidString, message: String? = nil) async throws -> String {
-    try await repo.write(content, path: path)
+    try await repo.fileWrite(content, path: path)
     return try await repo.commit(message ?? "Added \(path)")
 }

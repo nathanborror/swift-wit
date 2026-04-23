@@ -91,17 +91,17 @@ final class RepoTests {
         defer { RemoveDirectory(path) }
 
         try await repo.initialize()
-        try await repo.write("This is some foo", path: "Documents/foo.txt")
-        try await repo.write("This is some bar", path: "Documents/bar.txt")
-        try await repo.write("", path: ".DS_Store") // Should be ignored
+        try await repo.fileWrite("This is some foo", path: "Documents/foo.txt")
+        try await repo.fileWrite("This is some bar", path: "Documents/bar.txt")
+        try await repo.fileWrite("", path: ".DS_Store") // Should be ignored
 
         let commit1_Hash = try await repo.commit("Initial commit")
         let commit1_Status = try await repo.status(.commit(commit1_Hash))
         #expect(commit1_Status.isEmpty == true)
 
-        try await repo.write("Updated foo", path: "Documents/foo.txt")
-        try await repo.write("This is some baz", path: "Documents/Folder/baz.txt")
-        try await repo.delete("Documents/bar.txt")
+        try await repo.fileWrite("Updated foo", path: "Documents/foo.txt")
+        try await repo.fileWrite("This is some baz", path: "Documents/Folder/baz.txt")
+        try await repo.fileDelete("Documents/bar.txt")
 
         let status1_WithChanges = try await repo.status()
         #expect(status1_WithChanges.isEmpty == false)
@@ -122,8 +122,8 @@ final class RepoTests {
 
         try await repo.initialize()
 
-        try await repo.write("", path: ".DS_Store") // Should be ignored
-        try await repo.write("", path: "Documents/foo.txt")
+        try await repo.fileWrite("", path: ".DS_Store") // Should be ignored
+        try await repo.fileWrite("", path: "Documents/foo.txt")
         let commit1_Hash = try await repo.commit("Initial commit")
         #expect(commit1_Hash.isEmpty == false)
         #expect(try await repo.objects.exists(key: .init(hash: commit1_Hash, kind: .commit)) == true)
@@ -143,7 +143,7 @@ final class RepoTests {
         #expect(commit1_TreeSubTree.entries.count == 1)
 
         // Delete all files and commit changes
-        try await repo.delete("Documents")
+        try await repo.fileDelete("Documents")
         let commit2_Hash = try await repo.commit("Deleted documents")
         let commit2 = try await repo.objects.retrieve(commit: commit2_Hash)
         let commit2_Tree = try await repo.objects.retrieve(tree: commit2.tree)
@@ -161,13 +161,13 @@ final class RepoTests {
 
         try await repo.initialize()
 
-        try await repo.write("Some text", path: "Documents/foo.txt")
+        try await repo.fileWrite("Some text", path: "Documents/foo.txt")
         let commit1_Hash = try await repo.commit("Initial commit")
         #expect(commit1_Hash.isEmpty == false)
         #expect(try await repo.objects.exists(key: .init(hash: commit1_Hash, kind: .commit)) == true)
 
-        try await repo.write("Some edited text", path: "Documents/foo.txt")
-        try await repo.write("Some text", path: "Documents/foo.txt")
+        try await repo.fileWrite("Some edited text", path: "Documents/foo.txt")
+        try await repo.fileWrite("Some text", path: "Documents/foo.txt")
         let status = try await repo.status()
         #expect(status.count == 0)
     }
@@ -179,15 +179,15 @@ final class RepoTests {
 
         try await repo.initialize()
 
-        try await repo.write("This is some foo", path: "foo.txt")
-        try await repo.write("This is some bar", path: "Documents/bar.txt")
+        try await repo.fileWrite("This is some foo", path: "foo.txt")
+        try await repo.fileWrite("This is some bar", path: "Documents/bar.txt")
         try await repo.commit("Initial commit")
 
         let referencesA = try await repo.retrieveCurrentBlobReferences()
         #expect(referencesA.count == 2)
 
-        try await repo.write("This is some changed foo", path: "foo.txt")
-        try await repo.delete("Documents/bar.txt")
+        try await repo.fileWrite("This is some changed foo", path: "foo.txt")
+        try await repo.fileDelete("Documents/bar.txt")
 
         let referencesB = try await repo.retrieveCurrentBlobReferences()
         #expect(referencesB.count == 1)
@@ -279,7 +279,7 @@ final class RepoTests {
         try await repo.initialize()
 
         try await CommitFile(repo, path: "temp.txt", content: "temporary", message: "Add temp")
-        try await repo.delete("temp.txt")
+        try await repo.fileDelete("temp.txt")
         let _ = try await repo.commit("Delete temp")
 
         let tempLogs = try await repo.logs(path: "temp.txt")
@@ -310,9 +310,9 @@ final class RepoTests {
         defer { RemoveDirectory(path) }
 
         try await repo.initialize()
-        try await repo.write("This is some foo", path: "foo.txt")
-        try await repo.write("This is some bar", path: "Documents/bar.txt")
-        try await repo.write("This is some baz", path: "Documents/Sub/baz.txt")
+        try await repo.fileWrite("This is some foo", path: "foo.txt")
+        try await repo.fileWrite("This is some bar", path: "Documents/bar.txt")
+        try await repo.fileWrite("This is some baz", path: "Documents/Sub/baz.txt")
 
         let commit1_Hash = try await repo.commit("Initial commit")
         let commit1 = try await repo.objects.retrieve(commit: commit1_Hash)
@@ -320,7 +320,7 @@ final class RepoTests {
         let commit1_TreeBarEntry = commit1_Tree.entries.first { $0.name == "Documents" }
         let commit1_TreeBarEntryHash = commit1_TreeBarEntry?.hash
 
-        try await repo.write("Updated foo", path: "foo.txt")
+        try await repo.fileWrite("Updated foo", path: "foo.txt")
 
         let commit2_Hash = try await repo.commit("Update file")
         let commit2 = try await repo.objects.retrieve(commit: commit2_Hash)

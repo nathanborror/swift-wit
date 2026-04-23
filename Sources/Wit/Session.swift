@@ -78,24 +78,25 @@ public actor RepoSession {
     // MARK: Working with files
 
     /// Reads data from the path in the working directory.
-    public func read(_ path: String) async throws -> Data {
+    public func fileRead(_ path: String) async throws -> Data {
         try await remoteLocal.get(path: path)
     }
 
-    /// Writes string to the path in the working directory.
-    public func write(_ string: String?, path: String) async throws {
-        guard let string, let data = string.data(using: .utf8) else { return }
-        try await write(data, path: path)
+    public func fileWrite(_ string: String, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
+        guard let data = string.data(using: .utf8) else {
+            throw Error.missingData
+        }
+        try await remoteLocal.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
     /// Writes data to the path in the  working directory.
-    public func write(_ data: Data, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
+    public func fileWrite(_ data: Data, path: String, directoryHint: URL.DirectoryHint = .notDirectory) async throws {
         try await remoteLocal.put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
     /// Writes binary data to the object store. The object has retains its file extension, helps browsers detect its MIME type. Returns the object hash.
     @discardableResult
-    public func writeBinary(_ data: Data, path: String) async throws -> String {
+    public func fileWriteBinary(_ data: Data, path: String) async throws -> String {
         guard let ext = path.split(separator: ".").last.map(String.init) else {
             throw Error.missingExtension
         }
@@ -103,38 +104,51 @@ public actor RepoSession {
     }
 
     /// Deletes file from working directory.
-    public func delete(_ path: String) async throws {
+    public func fileDelete(_ path: String) async throws {
         try await remoteLocal.delete(path: path, privateKey: privateKey)
     }
 
-    public func deleteBinary(_ hash: String) async throws {
+    public func fileDelete(remote: Remote, path: String) async throws {
+        try await remote.delete(path: path, privateKey: privateKey)
+    }
+
+    public func filePush(remote: Remote, path: String, data: Data) async throws {
+        try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
+    }
+
+    public func filePull(remote: Remote, path: String) async throws {
+        let data = try await remote.get(path: path)
+        try await fileWrite(data, path: path)
+    }
+
+    public func fileDeleteBinary(hash: String) async throws {
         try await objects.deleteBinary(hash: hash, privateKey: privateKey)
     }
 
-    public func move(_ path: String, to toPath: String) async throws {
+    public func fileMove(_ path: String, to toPath: String) async throws {
         try await remoteLocal.move(path: path, to: toPath)
     }
 
-    public func localURL(_ path: String) -> URL {
+    public func fileURL(_ path: String) -> URL {
         baseURL.appending(path: path)
     }
 
-    public func localURL(hash: String, kind: Objects.Key.Kind) async -> URL {
+    public func fileURL(hash: String, kind: Objects.Key.Kind) async -> URL {
         let path = await objects.objectPath(.init(hash: hash, kind: kind))
         return baseURL.appending(path: path)
     }
 
-    public func localPath(hash: String, kind: Objects.Key.Kind) async -> String {
+    public func fileObjectPath(hash: String, kind: Objects.Key.Kind) async -> String {
         return await objects.objectPath(.init(hash: hash, kind: kind))
     }
 
-    public func localExists(_ path: String) -> Bool {
-        FileManager.default.fileExists(atPath: localURL(path).path)
+    public func fileExists(_ path: String) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(path).path)
     }
 
-    public func localExistsAsDirectory(_ path: String) -> Bool {
+    public func fileExistsAsDirectory(_ path: String) -> Bool {
         var isDir: ObjCBool = false
-        let _ = FileManager.default.fileExists(atPath: localURL(path).path, isDirectory: &isDir)
+        let _ = FileManager.default.fileExists(atPath: fileURL(path).path, isDirectory: &isDir)
         return isDir.boolValue
     }
 
@@ -154,7 +168,7 @@ public actor RepoSession {
         // Copy necessary files
         for path in [configPath, secretsPath, logsPath] {
             if let data = try? await remote.get(path: path) {
-                try await write(data, path: path)
+                try await fileWrite(data, path: path)
             }
         }
 
@@ -170,7 +184,7 @@ public actor RepoSession {
             }
             let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
-            try await write(data, path: path)
+            try await fileWrite(data, path: path)
         }
 
         if bare { return }
@@ -194,7 +208,7 @@ public actor RepoSession {
             .ContentType: "text/ini",
         ])
         let configData = MIMEEncoder().encode(config)
-        try await write(configData, path: configPath)
+        try await fileWrite(configData, path: configPath)
 
         // Create secrets
         let secrets = MIMEMessage(headers: [
@@ -204,7 +218,7 @@ public actor RepoSession {
             .ContentTransferEncoding: "base64",
         ])
         let secretsData = MIMEEncoder().encode(secrets)
-        try await write(secretsData, path: secretsPath)
+        try await fileWrite(secretsData, path: secretsPath)
 
         // Create HEAD
         let head = MIMEMessage(headers: [
@@ -212,7 +226,7 @@ public actor RepoSession {
             .ContentType: "text/plain",
         ])
         let headData = MIMEEncoder().encode(head)
-        try await write(headData, path: headPath)
+        try await fileWrite(headData, path: headPath)
 
         // Create logs
         let logs = MIMEMessage(
@@ -221,7 +235,7 @@ public actor RepoSession {
             ],
             body: "timestamp,hash,parent,message\n")
         let logsData = MIMEEncoder().encode(logs)
-        try await write(logsData, path: logsPath)
+        try await fileWrite(logsData, path: logsPath)
 
         await postStatusNotification("Initialized repository")
     }
@@ -266,7 +280,7 @@ public actor RepoSession {
 
     /// Show commit logs.
     public func logs() async throws -> [Log] {
-        guard let data = try? await read(logsPath) else { return [] }
+        guard let data = try? await fileRead(logsPath) else { return [] }
         let mime = try MIMEDecoder().decode(data)
         return try LogDecoder().decode(mime.body)
     }
@@ -354,7 +368,7 @@ public actor RepoSession {
         try await fetch(remote)
 
         let head = await readHEAD(remote: remoteLocal)
-        let remoteHeadData = try await read("\(repoPath)/remotes/origin/HEAD")
+        let remoteHeadData = try await fileRead("\(repoPath)/remotes/origin/HEAD")
         let remoteHead = String(data: remoteHeadData, encoding: .utf8)
 
         guard let head, let remoteHead else {
@@ -377,8 +391,8 @@ public actor RepoSession {
             await postStatusNotification("Nothing to rebase — no unique commits")
 
             // Update logs
-            let remoteLogs = try await read("\(repoPath)/remotes/origin/logs")
-            try await write(remoteLogs, path: logsPath)
+            let remoteLogs = try await fileRead("\(repoPath)/remotes/origin/logs")
+            try await fileWrite(remoteLogs, path: logsPath)
 
             // Checkout and make the remote head the current HEAD
             try await checkout(remoteHead, remote: remote)
@@ -496,7 +510,7 @@ public actor RepoSession {
 
         // Upload current HEAD, logs and config to remote
         for path in [configPath, secretsPath, logsPath, headPath] {
-            if let data = try? await read(path) {
+            if let data = try? await fileRead(path) {
                 try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
             }
         }
@@ -531,12 +545,13 @@ public actor RepoSession {
     public func fetch(_ remote: Remote) async throws {
         // Copy remote config
         if let remoteConfig = try? await remote.get(path: configPath) {
-            try await write(remoteConfig, path: configPath)
+            try await fileWrite(remoteConfig, path: configPath)
         }
 
         // Download remote head
         let remoteHead = await readHEAD(remote: remote) ?? ""
-        try await write(remoteHead, path: "\(repoPath)/remotes/origin/HEAD")
+        let remoteHeadData = remoteHead.data(using: .utf8) ?? Data()
+        try await fileWrite(remoteHeadData, path: "\(repoPath)/remotes/origin/HEAD")
 
         // Local head
         let head = await readHEAD(remote: remoteLocal)
@@ -553,12 +568,12 @@ public actor RepoSession {
             }
             let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
-            try await write(data, path: path)
+            try await fileWrite(data, path: path)
         }
 
         // Download remote logs
         if let remoteLogs = try? await remote.get(path: logsPath) {
-            try await write(remoteLogs, path: "\(repoPath)/remotes/origin/logs")
+            try await fileWrite(remoteLogs, path: "\(repoPath)/remotes/origin/logs")
         }
     }
 
@@ -626,10 +641,10 @@ extension RepoSession {
     /// Appends line to given log file.
     func log(path: String, append line: String) async throws {
         guard let lineData = line.data(using: .utf8) else { return }
-        let logsData = try await read(logsPath)
+        let logsData = try await fileRead(logsPath)
         let needsNewline = !logsData.isEmpty && logsData.last != UInt8(ascii: "\n")
         let separator = needsNewline ? Data([UInt8(ascii: "\n")]) : Data()
-        try await write(logsData + separator + lineData, path: path)
+        try await fileWrite(logsData + separator + lineData, path: path)
     }
 
     // TODO: Review generated code
@@ -778,7 +793,7 @@ extension RepoSession {
         } else {
             let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
-            try await write(data, path: path)
+            try await fileWrite(data, path: path)
             return data
         }
     }
@@ -790,7 +805,7 @@ extension RepoSession {
         } else {
             let path = await objects.objectPath(key)
             let data = try await remote.get(path: path)
-            try await write(data, path: path)
+            try await fileWrite(data, path: path)
             return data
         }
     }

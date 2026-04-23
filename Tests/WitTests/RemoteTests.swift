@@ -19,6 +19,9 @@ final class RemoteTests {
     let clientB_workingFolder: String
     let clientB: RepoSession
 
+    let registerPath = "bin/register"
+    let unregisterPath = "unregister"
+
     init() async throws {
         self.privateKey = Remote.PrivateKey()
         self.identity = UUID().uuidString
@@ -39,15 +42,15 @@ final class RemoteTests {
             address = \(identity)@local
             publicKey = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
             """
-        try await clientA.write(config, path: clientA.configPath)
+        try await clientA.fileWrite(config, path: clientA.configPath)
 
         self.remote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/home/\(identity)")!)
         self.remoteBin = RemoteHTTP(baseURL: .init(string: "http://localhost:8080/bin/\(identity)")!)
 
         // Register with remote HTTP server
         let registerRemote = RemoteHTTP(baseURL: .init(string: "http://localhost:8080")!)
-        let configData = try await clientA.read(clientA.configPath)
-        try await registerRemote.post(path: "register", data: configData, directoryHint: .notDirectory, privateKey: nil)
+        let configData = try await clientA.fileRead(clientA.configPath)
+        try await registerRemote.post(path: registerPath, data: configData, directoryHint: .notDirectory, privateKey: nil)
 
         self.clientB = RepoSession(baseURL: clientB_baseURL, privateKey: privateKey)
         try await self.clientB.initialize()
@@ -62,37 +65,37 @@ final class RemoteTests {
 
     @Test("Push")
     func push() async throws {
-        try await clientA.write("This is some foo", path: "foo.txt")
-        try await clientA.write("This is some bar", path: "bar.txt")
+        try await clientA.fileWrite("This is some foo", path: "foo.txt")
+        try await clientA.fileWrite("This is some bar", path: "bar.txt")
         try await clientA.commit("Initial commit")
         try await clientA.push(remote)
 
         let logCheck1 = try await clientA.logs()
         #expect(logCheck1.count == 1)
 
-        try await clientA.write("This is more foo", path: "foo.txt")
+        try await clientA.fileWrite("This is more foo", path: "foo.txt")
         try await clientA.commit("Second commit")
         try await clientA.push(remote)
 
         let logCheck2 = try await clientA.logs()
         #expect(logCheck2.count == 2)
 
-        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
+        try await remoteBin.post(path: unregisterPath, data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("Rebase")
     func rebase() async throws {
 
         // ClientA: First commit
-        try await clientA.write("This is some foo", path: "foo.txt")
+        try await clientA.fileWrite("This is some foo", path: "foo.txt")
         try await clientA.commit("First commit")
         try await clientA.push(remote)
 
-        try await clientA.write("This is some bar", path: "bar.txt")
+        try await clientA.fileWrite("This is some bar", path: "bar.txt")
         try await clientA.commit("Second commit")
         try await clientA.push(remote)
 
-        try await clientA.write("This is some baz", path: "baz/baz.txt")
+        try await clientA.fileWrite("This is some baz", path: "baz/baz.txt")
         let clientA_commit3 = try await clientA.commit("Third commit")
         try await clientA.push(remote)
 
@@ -102,7 +105,7 @@ final class RemoteTests {
         #expect(clientB_HEAD == clientA_commit3)
 
         // ClientA: Second commit
-        try await clientA.write("This is some bar", path: "bar.txt")
+        try await clientA.fileWrite("This is some bar", path: "bar.txt")
         try await clientA.commit("Second commit")
         try await clientA.push(remote)
         let clientA_logs = try await clientA.logs()
@@ -112,7 +115,7 @@ final class RemoteTests {
         let logs = try await clientB.logs()
         #expect(logs.count == 4)
 
-        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
+        try await remoteBin.post(path: unregisterPath, data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("Push binaries")
@@ -121,7 +124,7 @@ final class RemoteTests {
         let filePath = "photo.jpg"
 
         // Write binary — should only store locally, not on remote
-        let hash = try await clientA.writeBinary(binaryData, path: filePath)
+        let hash = try await clientA.fileWriteBinary(binaryData, path: filePath)
 
         // Verify the binary does NOT exist on the remote yet
         let remoteObjects = Objects(remote: remote, objectsPath: await clientA.objectsPath)
@@ -142,31 +145,31 @@ final class RemoteTests {
         let remoteBinary = try await remoteObjects.retrieve(binary: hash)
         #expect(remoteBinary == binaryData)
 
-        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
+        try await remoteBin.post(path: unregisterPath, data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("Complex push")
     func pushComplex() async throws {
-        try await clientA.write("This is some foo", path: "foo.txt")
-        try await clientA.write("This is some bar", path: "bar.txt")
-        try await clientA.move("foo.txt", to: "baz/foo.txt")
+        try await clientA.fileWrite("This is some foo", path: "foo.txt")
+        try await clientA.fileWrite("This is some bar", path: "bar.txt")
+        try await clientA.fileMove("foo.txt", to: "baz/foo.txt")
         try await clientA.commit("First commit")
         try await clientA.push(remote)
 
-        try await clientA.write("This is more foo", path: "baz/foo.txt")
+        try await clientA.fileWrite("This is more foo", path: "baz/foo.txt")
         try await clientA.commit("Second commit")
         try await clientA.push(remote)
 
-        try await clientA.writeBinary(Data("fake image data".utf8), path: "photo.jpg")
+        try await clientA.fileWriteBinary(Data("fake image data".utf8), path: "photo.jpg")
         try await clientA.commit("Third commit")
         try await clientA.push(remote)
 
-        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
+        try await remoteBin.post(path: unregisterPath, data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 
     @Test("List")
     func list() async throws {
-        try await clientA.write("This is some foo", path: "foo.txt")
+        try await clientA.fileWrite("This is some foo", path: "foo.txt")
         try await clientA.commit("First commit")
         try await clientA.push(remote)
 
@@ -178,6 +181,6 @@ final class RemoteTests {
             #expect(item.hasPrefix(parent))
         }
 
-        try await remoteBin.post(path: "unregister", data: nil, directoryHint: .notDirectory, privateKey: privateKey)
+        try await remoteBin.post(path: unregisterPath, data: nil, directoryHint: .notDirectory, privateKey: privateKey)
     }
 }
