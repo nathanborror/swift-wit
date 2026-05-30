@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import OSLog
 
 private let logger = Logger(subsystem: "RemoteHTTP", category: "Wit")
@@ -24,7 +23,7 @@ public actor RemoteDisk: Remote {
         return data
     }
 
-    public func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+    public func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: Data?) async throws {
         let url = baseURL.appending(path: path, directoryHint: directoryHint)
         if directoryHint == .isDirectory {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -36,11 +35,11 @@ public actor RemoteDisk: Remote {
         }
     }
 
-    public func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+    public func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: Data?) async throws {
         try await put(path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func delete(path: String, privateKey: PrivateKey?) async throws {
+    public func delete(path: String, privateKey: Data?) async throws {
         let url = baseURL/path
         try? FileManager.default.removeItem(at: url)
         cache.removeValue(forKey: path)
@@ -82,7 +81,7 @@ public actor RemoteDisk: Remote {
         try FileManager.default.moveItem(at: atURL, to: toURL)
     }
 
-    public func sign(request: URLRequest, data: Data?, privateKey: PrivateKey) throws -> URLRequest {
+    public func sign(request: URLRequest, data: Data?, privateKey: Data) throws -> URLRequest {
         return request
     }
 }

@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import CommonCrypto
 import OSLog
 
@@ -65,15 +64,15 @@ public actor RemoteS3: Remote {
         }
     }
 
-    public func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+    public func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: Data?) async throws {
         try await upload("PUT", path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+    public func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: Data?) async throws {
         try await upload("POST", path: path, data: data, directoryHint: directoryHint, privateKey: privateKey)
     }
 
-    public func delete(path: String, privateKey: PrivateKey?) async throws {
+    public func delete(path: String, privateKey: Data?) async throws {
         var request = URLRequest(url: baseURL/path)
         request.httpMethod = "DELETE"
         request.timeoutInterval = 15
@@ -167,7 +166,7 @@ public actor RemoteS3: Remote {
         logger.warning("RemoteS3.move not implemented")
     }
 
-    public func sign(request: URLRequest, data: Data?, privateKey: PrivateKey) throws -> URLRequest {
+    public func sign(request: URLRequest, data: Data?, privateKey: Data) throws -> URLRequest {
         guard let accessKey, let secretKey else {
             throw RemoteError.unauthorized
         }
@@ -189,7 +188,7 @@ public actor RemoteS3: Remote {
 
     // MARK: Private
 
-    private func upload(_ method: String, path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws {
+    private func upload(_ method: String, path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: Data?) async throws {
 
         // Amazon doesn't have a concept of directories (yet)
         guard directoryHint != .isDirectory else {

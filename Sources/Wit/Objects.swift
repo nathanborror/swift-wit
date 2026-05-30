@@ -22,7 +22,7 @@ public actor Objects {
 
     // MARK: Store
 
-    public func store(commit: Commit, privateKey: Remote.PrivateKey?) async throws -> String {
+    public func store(commit: Commit, privateKey: Data?) async throws -> String {
         let data = try commit.encode()
         let hash = computeHash(data)
         let path = objectPath(.init(hash: hash, kind: .commit))
@@ -30,7 +30,7 @@ public actor Objects {
         return hash
     }
 
-    public func store(tree: Tree, privateKey: Remote.PrivateKey?) async throws -> String {
+    public func store(tree: Tree, privateKey: Data?) async throws -> String {
         let data = try tree.encode()
         let hash = computeHash(data)
         let path = objectPath(.init(hash: hash, kind: .tree))
@@ -38,14 +38,14 @@ public actor Objects {
         return hash
     }
 
-    public func store(blob data: Data, privateKey: Remote.PrivateKey?) async throws -> String {
+    public func store(blob data: Data, privateKey: Data?) async throws -> String {
         let hash = computeHash(data)
         let path = objectPath(.init(hash: hash, kind: .blob))
         try await remote.put(path: path, data: data, directoryHint: .notDirectory, privateKey: privateKey)
         return hash
     }
 
-    public func store(binary data: Data, ext: String, privateKey: Remote.PrivateKey?) async throws -> String {
+    public func store(binary data: Data, ext: String, privateKey: Data?) async throws -> String {
         let hash = computeHash(data)
         let path = objectPath(.init(hash: hash, kind: .binary))
         try await remote.put(path: "\(path).\(ext)", data: data, directoryHint: .notDirectory, privateKey: privateKey)
@@ -54,7 +54,7 @@ public actor Objects {
 
     // MARK: Deletion
 
-    public func deleteBinary(hash: String, privateKey: Remote.PrivateKey?) async throws {
+    public func deleteBinary(hash: String, privateKey: Data?) async throws {
         let path = objectPath(.init(hash: hash, kind: .binary))
         try await remote.delete(path: path, privateKey: privateKey)
     }

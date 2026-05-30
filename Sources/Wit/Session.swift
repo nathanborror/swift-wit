@@ -23,10 +23,9 @@ public actor RepoSession {
         case commit(String)
     }
 
-
     let remoteLocal: any Remote
     let objects: Objects
-    let privateKey: Remote.PrivateKey?
+    let privateKey: Data?
     let ignores: [String]
 
     public let baseURL: URL
@@ -37,7 +36,7 @@ public actor RepoSession {
     public let logsPath: String
     public let objectsPath: String
 
-    public init(baseURL: URL, repoPath: String = ".wit", privateKey: Remote.PrivateKey? = nil, ignores: [String] = [".DS_Store"]) {
+    public init(baseURL: URL, repoPath: String = ".wit", privateKey: Data? = nil, ignores: [String] = [".DS_Store"]) {
         self.repoPath = repoPath
         self.baseURL = baseURL
         self.remoteLocal = RemoteDisk(baseURL: baseURL)
@@ -940,7 +939,7 @@ extension RepoSession {
 
 extension RepoSession {
 
-    public func dataDecrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+    public func dataDecrypt(_ data: Data, privateKey privateKeyData: Data) throws -> Data {
         guard !data.isEmpty else {
             throw Error.missingData
         }
@@ -952,7 +951,7 @@ extension RepoSession {
 
         precondition(header.magic == "WILDCRYPT" && header.version == 1)
 
-        let key = issueSymmetricKey(privateKey, salt: header.salt)
+        let key = try issueSymmetricKey(privateKeyData, salt: header.salt)
         let nonce = try ChaChaPoly.Nonce(data: header.nonce)
 
         // Remaining = ciphertext||tag (16-byte tag)
@@ -963,12 +962,12 @@ extension RepoSession {
         return try ChaChaPoly.open(box, using: key)
     }
 
-    public func dataEncrypt(_ data: Data, privateKey: Curve25519.Signing.PrivateKey) throws -> Data {
+    public func dataEncrypt(_ data: Data, privateKey privateKeyData: Data) throws -> Data {
         guard !data.isEmpty else {
             throw Error.missingData
         }
         let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
-        let key  = issueSymmetricKey(privateKey, salt: salt)
+        let key = try issueSymmetricKey(privateKeyData, salt: salt)
 
         let nonce = try ChaChaPoly.Nonce(data: Data((0..<12).map { _ in UInt8.random(in: 0...255) }))
         let sealed = try ChaChaPoly.seal(data, using: key, nonce: nonce)
@@ -986,9 +985,8 @@ extension RepoSession {
         return secrets
     }
 
-    private func issueSymmetricKey(_ signingKey: Curve25519.Signing.PrivateKey, salt: Data) -> SymmetricKey {
-        let raw = signingKey.rawRepresentation
-        let seed = raw.prefix(32)
+    private func issueSymmetricKey(_ privateKeyData: Data, salt: Data) throws -> SymmetricKey {
+        let seed = privateKeyData.prefix(32)
         return HKDF<SHA256>.deriveKey(
             inputKeyMaterial: .init(data: seed),
             salt: salt,

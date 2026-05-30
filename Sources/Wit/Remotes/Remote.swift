@@ -1,21 +1,18 @@
 import Foundation
-import CryptoKit
 
 public protocol Remote: Actor {
-    typealias PrivateKey = Curve25519.Signing.PrivateKey
-
     var baseURL: URL { get }
 
     func get(path: String) async throws -> Data
-    func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws
-    func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: PrivateKey?) async throws
-    func delete(path: String, privateKey: PrivateKey?) async throws
+    func put(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: Data?) async throws
+    func post(path: String, data: Data?, directoryHint: URL.DirectoryHint, privateKey: Data?) async throws
+    func delete(path: String, privateKey: Data?) async throws
 
     func exists(path: String) async throws -> Bool
     func list(path: String, depth: Int?) async throws -> [String]
     func move(path: String, to toPath: String) async throws
 
-    func sign(request: URLRequest, data: Data?, privateKey: PrivateKey) throws -> URLRequest
+    func sign(request: URLRequest, data: Data?, privateKey: Data) throws -> URLRequest
 }
 
 extension Remote {

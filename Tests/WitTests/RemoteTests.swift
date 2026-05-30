@@ -7,7 +7,7 @@ let isServerRunning = true
 
 @Suite("Remote Tests", .enabled(if: isServerRunning))
 final class RemoteTests {
-    let privateKey: Remote.PrivateKey
+    let privateKey: Data
     let identity: String
 
     let remote: Remote
@@ -23,7 +23,8 @@ final class RemoteTests {
     let unregisterPath = "unregister"
 
     init() async throws {
-        self.privateKey = Remote.PrivateKey()
+        let key = Curve25519.Signing.PrivateKey()
+        self.privateKey = key.rawRepresentation
         self.identity = UUID().uuidString
 
         self.clientA_workingFolder = "A-\(identity)"
@@ -40,7 +41,7 @@ final class RemoteTests {
             Content-Type: text/ini
             
             address = \(identity)@local
-            publicKey = \(privateKey.publicKey.rawRepresentation.base64EncodedString())
+            publicKey = \(key.publicKey.rawRepresentation.base64EncodedString())
             """
         try await clientA.fileWrite(config, path: clientA.configPath)
 

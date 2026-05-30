@@ -6,7 +6,7 @@ func NewRepo() -> (String, RepoSession) {
     let ident = UUID().uuidString
     let privateKey = Curve25519.Signing.PrivateKey()
     let baseURL = URL.documentsDirectory.appending(path: ident)
-    let repo = RepoSession(baseURL: baseURL, privateKey: privateKey)
+    let repo = RepoSession(baseURL: baseURL, privateKey: privateKey.rawRepresentation)
     return (ident, repo)
 }
 
